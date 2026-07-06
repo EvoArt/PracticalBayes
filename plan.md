@@ -41,10 +41,34 @@ src/
 ├── chains.jl           # bundle_samples → MCMCChains (names via layout meta / optic_vec)
 ├── gibbs.jl            # Gibbs, GibbsState, block conditioning, setparams!! refresh
 ├── latent.jl           # AbstractLatentKernel, ModelConditional, latent_step
-└── predict.jl          # rand(model), predict, returned, logjoint/logprior/loglikelihood
-test/  runtests.jl, compiler.jl, layout.jl, logdensity.jl, hmc.jl, gibbs.jl, predict.jl, stability.jl, gpu/cuda.jl (gated on CUDA.functional())
+├── predict.jl          # rand(model), predict, returned, logjoint/logprior/loglikelihood
+└── optimize.jl         # maximum_a_posteriori/maximum_likelihood/laplace_approximation,
+                         # hand-rolled L-BFGS default + Optimization.jl extension hook
+ext/
+└── PracticalBayesOptimizationExt.jl  # loaded when the user has `using Optimization`
+test/  runtests.jl, compiler.jl, layout.jl, logdensity.jl, optimize.jl, hmc.jl, gibbs.jl,
+       predict.jl, stability.jl, gpu/cuda.jl (gated on CUDA.functional())
 bench/ observe_overhead.jl
 ```
+
+### Errors, untracked params, and point estimation (added post-M1, pre-M2)
+
+Three "later considerations.md" items pulled forward since they're additive
+on top of `LogDensityFunction`/`Layout` and need no M2/M3 sampling glue —
+see the devlog entry dated 2026-07-06 (later) for full detail:
+
+- **Errors as rejected samples**: `LogDensityFunction(...; reject_errors=true)`
+  catches exceptions during model evaluation and reports `-Inf`/zero-gradient
+  instead of propagating (off by default).
+- **Untracked/nuisance params**: `build_layout(...; untracked=(:name,...))`
+  marks flat-vector sites that are still sampled but omitted from
+  `invlink`'s output NamedTuple by default (`include_untracked=true` to get
+  them back) — a reporting-only flag, invisible to `EvalMode`/`tilde.jl`.
+- **MAP/MLE/Laplace**: `maximum_a_posteriori`, `maximum_likelihood`,
+  `laplace_approximation` in `optimize.jl`, all built on
+  `DifferentiationInterface` directly. Default optimizer is a hand-rolled
+  L-BFGS (`_lbfgs_maximize`); passing `optimizer=<an Optimization.jl algorithm>`
+  requires `using Optimization` (weak dep + package extension).
 
 Deps: AbstractMCMC 5, AbstractPPL 0.15, ADTypes, Accessors, AdvancedHMC 0.8, Bijectors ≥0.15.24, DifferentiationInterface, Distributions, ForwardDiff (default adtype), LogDensityProblems 2, MCMCChains, MacroTools, Random. Test extras: Mooncake or ReverseDiff, JET, StableRNGs, DynamicPPL (logjoint cross-check only), CUDA (gated).
 

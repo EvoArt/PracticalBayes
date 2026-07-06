@@ -18,6 +18,15 @@ the model support that type (a Distributions.jl-level property, not one this
 package restricts). `store` values are passed to the evaluator as-is and to
 the AD backend as `DI.Constant`, so they are never differentiated and never
 force a promotion of `θ`'s element type.
+
+`reject_errors`: if `true`, any exception raised while evaluating the model
+body (e.g. a `logpdf` call hitting an out-of-support value during sampling)
+is caught and reported as `-Inf` density (with an all-zero gradient) instead
+of propagating — letting a sampler treat the draw as simply rejected rather
+than crashing the whole chain. Off by default so genuine bugs (e.g. a typo'd
+distribution argument) still fail loudly; turn it on once a model is known to
+be correct but can hit numerically-degenerate corners (e.g. a `Cholesky`
+factorization failing on an ill-conditioned covariance draw).
 """
 struct LogDensityFunction{M<:Model,L<:Layout,S<:NamedTuple,AD,P}
     model::M
@@ -25,21 +34,25 @@ struct LogDensityFunction{M<:Model,L<:Layout,S<:NamedTuple,AD,P}
     store::S
     adtype::AD
     prep::P
+    reject_errors::Bool
 end
 
 """
-    LogDensityFunction(model, layout, store=NamedTuple(), adtype=nothing; θ0=zeros(Float64, layout.dim))
+    LogDensityFunction(model, layout, store=NamedTuple(), adtype=nothing;
+                        θ0=zeros(Float64, layout.dim), reject_errors=false)
 
 `θ0` is used only to fix the element type and shape that `DifferentiationInterface`
 prepares its gradient tape/config for (`DI.prepare_gradient`); pass a vector of
 the type you intend to sample with (e.g. `zeros(Float32, layout.dim)`) if it's
 not `Float64`.
 """
-function LogDensityFunction(model, layout, store=NamedTuple(), adtype=nothing; θ0=zeros(Float64, layout.dim))
+function LogDensityFunction(
+    model, layout, store=NamedTuple(), adtype=nothing; θ0=zeros(Float64, layout.dim), reject_errors=false
+)
     if adtype === nothing
         # order-0: density only, e.g. for a plain Metropolis-Hastings kernel
         # that never needs a gradient. `prep` is `nothing` and never touched.
-        return LogDensityFunction(model, layout, store, nothing, nothing)
+        return LogDensityFunction(model, layout, store, nothing, nothing, reject_errors)
     end
     # `DI.prepare_gradient` traces/compiles the AD backend's tape or config
     # ONCE against `θ0`'s type and length; every later `logdensity_and_gradient`
@@ -54,7 +67,7 @@ function LogDensityFunction(model, layout, store=NamedTuple(), adtype=nothing; �
     # backend is used (ForwardDiff never even sees them promoted to Dual;
     # reverse-mode backends never build a tape node for them).
     prep = DI.prepare_gradient(_logdensity_call, adtype, θ0, DI.Constant(model), DI.Constant(layout), DI.Constant(store))
-    return LogDensityFunction(model, layout, store, adtype, prep)
+    return LogDensityFunction(model, layout, store, adtype, prep, reject_errors)
 end
 
 # The actual "run the model and read off the joint log-density" step, shared
@@ -64,6 +77,35 @@ end
     mode = EvalMode(layout, θ, store, model.conditioned)
     _, acc = evaluate(model, mode, Accum(zero(eltype(θ))))
     return logjoint(acc)
+end
+
+# Likelihood-only variant of `_logdensity_call`, used by `maximum_likelihood`
+# (optimize.jl) — identical evaluation, just reads off `loglikelihood_(acc)`
+# instead of `logjoint(acc)`. `Accum`'s prior/likelihood split (accumulator.jl)
+# means this needs no new machinery in tilde.jl at all.
+@inline function _loglikelihood_call(θ, model::Model, layout::Layout, store::NamedTuple)
+    mode = EvalMode(layout, θ, store, model.conditioned)
+    _, acc = evaluate(model, mode, Accum(zero(eltype(θ))))
+    return loglikelihood_(acc)
+end
+
+# Shared by both `reject_errors` branches below: an exception during
+# evaluation (out-of-support `logpdf`, a failed `Cholesky`, etc.) is not a
+# bug in the framework, it's a sign this particular `θ` is a bad draw — so we
+# report it exactly the way an impossible point should be reported, `-Inf`
+# density, rather than letting it crash the sampler.
+@inline _reject_value(θ) = convert(eltype(θ), -Inf)
+
+function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
+    if f.reject_errors
+        try
+            return _logdensity_call(θ, f.model, f.layout, f.store)
+        catch e
+            e isa Union{InterruptException,OutOfMemoryError} && rethrow()
+            return _reject_value(θ)
+        end
+    end
+    return _logdensity_call(θ, f.model, f.layout, f.store)
 end
 
 LogDensityProblems.dimension(f::LogDensityFunction) = f.layout.dim
@@ -78,16 +120,26 @@ function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{<:Any,<:Any
     return AD === Nothing ? LogDensityProblems.LogDensityOrder{0}() : LogDensityProblems.LogDensityOrder{1}()
 end
 
-function LogDensityProblems.logdensity(f::LogDensityFunction, θ::AbstractVector)
-    return _logdensity_call(θ, f.model, f.layout, f.store)
-end
-
 function LogDensityProblems.logdensity_and_gradient(f::LogDensityFunction, θ::AbstractVector)
     # `DI.value_and_gradient` reuses `f.prep` (built once at construction, see
     # above) and returns `(value, gradient)` — the exact pair
     # `LogDensityProblems.logdensity_and_gradient` is expected to return, so
     # there's nothing else to do here beyond passing the constants through
     # again (they must match what `prep` was built with).
+    if f.reject_errors
+        try
+            return DI.value_and_gradient(
+                _logdensity_call, f.prep, f.adtype, θ, DI.Constant(f.model), DI.Constant(f.layout), DI.Constant(f.store)
+            )
+        catch e
+            e isa Union{InterruptException,OutOfMemoryError} && rethrow()
+            # A zero gradient at `-Inf` is a safe "go nowhere" signal for any
+            # sampler that checks the density before trusting the gradient
+            # (e.g. NUTS's divergence check) — it never needs to be a real
+            # ascent direction since the point is rejected outright anyway.
+            return _reject_value(θ), zeros(eltype(θ), length(θ))
+        end
+    end
     return DI.value_and_gradient(
         _logdensity_call, f.prep, f.adtype, θ, DI.Constant(f.model), DI.Constant(f.layout), DI.Constant(f.store)
     )

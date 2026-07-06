@@ -73,3 +73,36 @@ end
     @test eltype(grad1) == eltype(grad2) == Float64  # but never promotes/leaks a Dual
     @test length(grad1) == length(grad2) == 1
 end
+
+@testset "logdensity.jl: reject_errors turns an exception into -Inf, not a crash" begin
+    # `logpdf(Exponential(1), x)` for `x < 0` doesn't throw (it's just -Inf),
+    # so to actually exercise the catch path we need a model that genuinely
+    # throws for some values of θ — e.g. `log` of a value that can go
+    # negative through an identity-linked (unconstrained) parameter.
+    @model function maybe_throws(y)
+        mu ~ Normal(0, 1)
+        w = log(mu)  # throws DomainError for mu <= 0, since `mu` is real-supported/unconstrained
+        y ~ Normal(w, 1)
+    end
+    m = maybe_throws(2.0)
+    # `init` forces trace-time `mu=1.0` (a random draw could land <= 0 and
+    # throw during `build_layout` itself, before we even get to the actual
+    # test of the reject-errors path at a deliberately bad θ).
+    layout, θ0, store0 = build_layout(m; init=(; mu=1.0))
+
+    ldf_strict = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0)
+    ldf_lenient = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0, reject_errors=true)
+
+    θ_bad = [-1.0]  # mu = -1 <= 0 -> log(mu) throws
+    @test_throws DomainError LogDensityProblems.logdensity(ldf_strict, θ_bad)
+    @test LogDensityProblems.logdensity(ldf_lenient, θ_bad) == -Inf
+
+    @test_throws DomainError LogDensityProblems.logdensity_and_gradient(ldf_strict, θ_bad)
+    val, grad = LogDensityProblems.logdensity_and_gradient(ldf_lenient, θ_bad)
+    @test val == -Inf
+    @test grad == zeros(1)
+
+    # a good point still works normally under the lenient wrapper
+    θ_good = [1.0]
+    @test LogDensityProblems.logdensity(ldf_lenient, θ_good) ≈ LogDensityProblems.logdensity(ldf_strict, θ_good)
+end

@@ -100,6 +100,42 @@ end
     @test_throws ArgumentError build_layout(m)
 end
 
+@testset "layout.jl: untracked flat params still sampled, hidden from invlink" begin
+    @model function many_params(y)
+        mu ~ Normal(0, 1)
+        nuisance ~ Normal(0, 1)
+        y ~ Normal(mu + nuisance, 1)
+    end
+    m = many_params(2.0)
+    layout, θ0, store0 = build_layout(m; untracked=(:nuisance,))
+    @test layout.dim == 2  # `nuisance` still occupies flat space...
+    @test layout.slots.nuisance isa PracticalBayes.FlatSlot
+    @test :nuisance in layout.untracked
+
+    nt = invlink(layout, θ0)
+    @test haskey(nt, :mu)
+    @test !haskey(nt, :nuisance)  # ...but is hidden from invlink by default
+
+    nt_full = invlink(layout, θ0; include_untracked=true)
+    @test haskey(nt_full, :nuisance)
+
+    # the log-density itself is completely unaffected by the flag — this is
+    # purely a reporting-level marker, not a change to `EvalMode`/tilde.jl.
+    mode = EvalMode(layout, θ0, store0, m.conditioned)
+    _, acc = evaluate(m, mode, Accum(0.0))
+    @test isfinite(logjoint(acc))
+end
+
+@testset "layout.jl: untracked name that isn't a flat site errors clearly" begin
+    @model function two_params(y)
+        mu ~ Normal(0, 1)
+        sigma ~ Exponential(1)
+        y ~ Normal(mu, sigma)
+    end
+    m = two_params(2.0)
+    @test_throws ArgumentError build_layout(m; untracked=(:doesnotexist,))
+end
+
 @testset "layout.jl: build_layout respects numeric type T" begin
     @model function two_params(y)
         mu ~ Normal(0, 1)

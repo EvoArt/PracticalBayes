@@ -7,6 +7,76 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
+## 2026-07-06 (later) — errors-as-rejected-samples, untracked/nuisance params, MAP/MLE/Laplace
+
+Three items pulled off "later considerations.md" in one session, all additive
+on top of the existing `LogDensityFunction`/`Layout` machinery — none needed
+any M2/M3 sampling infrastructure to exist first.
+
+**Errors as rejected samples** (`src/logdensity.jl`): `LogDensityFunction`
+gained a `reject_errors::Bool` field (default `false`, so existing behavior
+and tests are unchanged). When `true`, `LogDensityProblems.logdensity`/
+`logdensity_and_gradient` catch any exception raised while evaluating the
+model body and report `-Inf` density (with an all-zero gradient for the
+gradient path) instead of propagating — `InterruptException`/
+`OutOfMemoryError` are explicitly re-thrown since those are never "just a bad
+draw." This is a thin wrapper around the existing `_logdensity_call`, not a
+change to it: the model evaluation code itself doesn't know this feature
+exists.
+
+**Untracked / nuisance parameters** (`src/layout.jl`): `Layout` gained an
+`untracked::Set{Symbol}` field, populated via a new `untracked=` keyword on
+`build_layout` (must name existing flat-vector sites — a value-store name or
+an unknown name is a clear `ArgumentError`). An untracked site is otherwise
+completely ordinary: it occupies real space in `θ`, is sampled, and fully
+participates in the log-density and its gradient. The *only* effect is that
+`invlink` skips it by default (a new `include_untracked=false` keyword
+overrides this) — so it's a purely reporting-level flag, useful for models
+with many per-observation/per-group nuisance parameters nobody wants
+materialized into a chain. `EvalMode`/`tilde.jl` never look at this flag at
+all, by design — the note in the plan that "the M2 chain path will honor it
+later" just means `chains.jl`, once it exists, should call `invlink` the same
+way (default-omit) rather than needing any new machinery of its own.
+
+**MAP / MLE / Laplace** (new `src/optimize.jl`): built directly on
+`LogDensityFunction`'s two ingredients — a scalar objective and its gradient
+over flat `θ` — via `DifferentiationInterface` directly (same pattern as
+`logdensity.jl`), not through `LogDensityFunction` itself (a `LogDensityFunction`
+always reports the joint; MLE needs a different objective, so `optimize.jl`
+calls `DI.prepare_gradient`/`value_and_gradient` on its own two objective
+functions):
+
+- `_logdensity_call` (existing) for `maximum_a_posteriori`.
+- a new `_loglikelihood_call` (logdensity.jl) — identical evaluation, reads
+  `loglikelihood_(acc)` instead of `logjoint(acc)` — for `maximum_likelihood`.
+  `Accum`'s prior/likelihood split (accumulator.jl) made this a ~5-line
+  addition, exactly as anticipated before starting.
+- `laplace_approximation` runs `maximum_a_posteriori` then `DI.hessian` on
+  `_logdensity_call` at the MAP point; covariance is `-inv(H)`, reported in
+  the SAME unconstrained space `theta` lives in (a Gaussian approximation on
+  a constrained parameter's raw/linked scale is the only place it's actually
+  reasonable to draw one).
+
+All three share `_build_point_layout` (calls `build_layout` with `values =
+keys(store)`, so a caller can hold any subset of names fixed during
+optimization — same mechanism Gibbs will eventually use for blocks) and
+`_optimize_point` (one `DI.prepare_gradient` call, then either the built-in
+optimizer or `_external_optimize`).
+
+Per the user's explicit request, the DEFAULT optimizer is a hand-rolled
+L-BFGS (`_lbfgs_maximize`, textbook two-loop recursion + Armijo backtracking
+line search, phrased as ascent since we maximize a log-density) requiring no
+dependency beyond `LinearAlgebra` (already a dep) — so point estimation works
+out of the box with zero new required packages. Optimization.jl is wired in
+as a `[weakdeps]`/package-extension (`ext/PracticalBayesOptimizationExt.jl`,
+Julia's built-in extension mechanism, no Requires.jl): passing any non-`nothing`
+`optimizer=` routes through a `_external_optimize` stub that only resolves to
+something useful once the user has `using Optimization` loaded, at which
+point the extension's method (dispatching via ordinary multiple dispatch,
+not a runtime package check) takes over and builds an `OptimizationFunction`/
+`OptimizationProblem` from the already-negated objective/gradient closures
+`optimize.jl` computes.
+
 ## 2026-07-06 — `:=` for conditioning on model-computed values
 
 The user pointed out a real gap: the initial design only treated a bare

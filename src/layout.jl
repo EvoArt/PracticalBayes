@@ -68,15 +68,24 @@ struct ValueSlot <: AbstractSlot end
 `dim`: total length of the flat unconstrained vector.
 `meta`: `Vector{SiteRecord}` in trace-visitation order, used for naming chains,
 building initial vectors, and error messages — not used in `EvalMode`.
+`untracked`: names (a subset of the flat-slot names in `slots`) that should
+still be sampled — they occupy real space in `θ` and are fully part of the
+model — but are excluded by `invlink` (and therefore from chain-bundling,
+once `chains.jl` exists) as a memory/reporting optimization for models with
+many "nuisance" parameters nobody wants in the output. This is purely a
+reporting-level flag: `EvalMode`/`tilde.jl` never look at it, so an untracked
+site's gradient contribution and posterior correlation with everything else
+is completely unaffected.
 """
 struct Layout{S<:NamedTuple}
     slots::S
     dim::Int
     meta::Vector{SiteRecord}
+    untracked::Set{Symbol}
 end
 
 """
-    build_layout(model; flat=nothing, values=(), rng=Random.default_rng(), init=NamedTuple()) -> (layout, θ0, store0)
+    build_layout(model; flat=nothing, values=(), untracked=(), rng=Random.default_rng(), init=NamedTuple()) -> (layout, θ0, store0)
 
 Runs `model` once under `TraceMode` to discover its variables, then
 partitions assumed (non-conditioned) sites into flat-vector slots vs
@@ -87,6 +96,13 @@ value-store slots.
 - `values`: `Tuple` of `Symbol`s to place in the constant store instead
   (latents / other Gibbs blocks). Discrete-distribution sites MUST appear
   here (or be conditioned) — there is no flat-vector encoding for them.
+- `untracked`: `Tuple` of `Symbol`s (must be a subset of the flat-vector
+  names) to mark as nuisance parameters: they still occupy real space in
+  `θ`, are still sampled, and still fully participate in the log-density and
+  its gradient — the ONLY effect is that `invlink` (and therefore chain
+  output, once `chains.jl` exists) omits them by default. Useful for very
+  large models with many per-observation/per-group parameters nobody wants
+  materialized in the output chain.
 
 Returns the `Layout`, an initial flat vector `θ0` (via `to_linked_vec` on each
 site's initial constrained value), and an initial store NamedTuple `store0`.
@@ -106,6 +122,7 @@ function build_layout(
     model;
     flat=nothing,
     values=(),
+    untracked=(),
     rng=Random.default_rng(),
     init=NamedTuple(),
     T::Type{<:Real}=Float64,
@@ -215,7 +232,18 @@ function build_layout(
     slots = NamedTuple(slot_pairs)  # isbits NamedTuple -> concrete-typed lookup in EvalMode
     store0 = NamedTuple(store_pairs)
     θ0 = isempty(theta_chunks) ? T[] : reduce(vcat, theta_chunks)
-    layout = Layout(slots, offset, records)
+
+    untracked_names = Set{Symbol}(untracked)
+    for name in untracked_names
+        haskey(slots, name) && slots[name] isa ValueSlot && throw(ArgumentError(
+            "site `$name` is in the value-store (`values=(:$name,...)`), not the flat vector; " *
+            "`untracked` only applies to flat-vector sites.",
+        ))
+        haskey(slots, name) || throw(ArgumentError(
+            "`untracked` name `$name` is not one of this layout's flat-vector sites: $(seen_order)",
+        ))
+    end
+    layout = Layout(slots, offset, records, untracked_names)
     return layout, θ0, store0
 end
 
@@ -256,13 +284,18 @@ function link(layout::Layout, nt::NamedTuple)
 end
 
 """
-    invlink(layout, θ) -> NamedTuple
+    invlink(layout, θ; include_untracked=false) -> NamedTuple
 
 Inverse of `link`: maps a flat unconstrained vector back to a NamedTuple of
 constrained values for every flat-slot variable in `layout`. Used for
 MCMCChains bundling, `predict`, and Gibbs block updates.
+
+Names in `layout.untracked` (see `build_layout`'s `untracked` keyword) are
+omitted unless `include_untracked=true` — they're still fully present in `θ`
+and the log-density, this just controls whether they're materialized into
+the returned NamedTuple (and, downstream, into a chain).
 """
-function invlink(layout::Layout, θ::AbstractVector)
+function invlink(layout::Layout, θ::AbstractVector; include_untracked=false)
     by_name = Dict{Symbol,Vector{SiteRecord}}()
     for r in layout.meta
         push!(get!(by_name, r.name, SiteRecord[]), r)
@@ -270,6 +303,7 @@ function invlink(layout::Layout, θ::AbstractVector)
     pairs_out = Pair{Symbol,Any}[]
     for (name, slot) in pairs(layout.slots)
         slot isa ValueSlot && continue  # nothing to invert — these never lived in θ
+        !include_untracked && name in layout.untracked && continue
         recs = by_name[name]
         if slot isa FlatSlot
             # `from_linked_vec(dist)` builds the bijector mapping an
