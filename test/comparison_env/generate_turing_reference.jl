@@ -15,6 +15,10 @@
 # Regenerate this file (by rerunning this script in test/comparison_env/)
 # only if the reference MODELS themselves change; ordinary PracticalBayes
 # code changes should never need this rerun.
+#
+# Matches the shape/precision matrix in bench/suite.jl (tiny=20 obs,
+# large=50_000 obs; Float64 and Float32) so the two sides are actually
+# comparable, not just a single arbitrarily-chosen model size.
 
 using Pkg
 Pkg.activate(@__DIR__)
@@ -22,11 +26,37 @@ Pkg.activate(@__DIR__)
 using Turing
 using DynamicPPL
 using StableRNGs: StableRNG
-using Statistics: mean, std
+using Statistics: mean, median, std
 using Distributions: Normal, Exponential, logpdf
 using Dates: now
 
 println("Turing version: ", pkgversion(Turing))
+
+# ===========================================================================
+# Same hand-rolled timing harness as bench/suite.jl (first-call time
+# reported separately from steady-state min/median/mean/std) — kept as a
+# verbatim copy here rather than a shared dependency, since this script runs
+# in an entirely separate environment from the main package (see above).
+# ===========================================================================
+
+struct TimingResult
+    label::String
+    first_call_s::Float64
+    min_s::Float64
+    median_s::Float64
+    mean_s::Float64
+    std_s::Float64
+    reps::Int
+end
+
+function time_reps(f, label; reps=30)
+    first_call_s = @elapsed f()
+    times = Vector{Float64}(undef, reps)
+    for i in 1:reps
+        times[i] = @elapsed f()
+    end
+    return TimingResult(label, first_call_s, minimum(times), median(times), mean(times), std(times), reps)
+end
 
 # ===========================================================================
 # Accuracy reference: conjugate Normal-Normal model, y_i ~ Normal(mu, 1),
@@ -54,16 +84,30 @@ turing_mu_std = std(turing_mu_draws)
 println("Turing conjugate posterior: mean=", turing_mu_mean, " std=", turing_mu_std)
 
 # ===========================================================================
-# Speed reference: observe-heavy model, 10_000 scalar observations. Times
-# Turing's plain `~` loop and its `@addlogprob!` escape hatch, both via
-# `Turing.VarInfo`/model-call (same mechanism DynamicPPL uses internally, no
-# sampling needed since we're only measuring one log-density evaluation's
-# cost, repeated).
+# Speed reference, density-only, over the SAME tiny/large x Float64/Float32
+# matrix as bench/suite.jl. `Turing.VarInfo` isn't directly exported in this
+# version; the underlying type lives in DynamicPPL (added here directly).
+#
+# IMPORTANT finding, captured explicitly rather than silently worked around:
+# DynamicPPL's `getlogjoint` PROMOTES BACK TO Float64` even when a model is
+# written entirely with Float32 literals (`Normal(0f0, 1f0)` etc) — confirmed
+# by checking `typeof(DynamicPPL.getlogjoint(vi))` on a Float32-literal model
+# before writing this script. This is exactly the "Turing/DynamicPPL forces
+# everything to Float64" limitation motivating this package's numeric-type
+# genericity requirement in the first place (see devlog). So the "Float32"
+# row for Turing below reflects Float32 DATA/model-literals but a Float64
+# computation internally — it is not an apples-to-apples Float32 compute
+# comparison, and that gap IS the point being measured.
 # ===========================================================================
-rng2 = StableRNG(7)
-y_speed = randn(rng2, 10_000)
 
-Turing.@model function turing_tilde_many_obs(y)
+# Defined unconditionally at top level (NOT inside a function with an
+# if/else picking between two `@model function m(...)` definitions — that
+# pattern redefines the same top-level name `m` conditionally, which
+# produces "Method definition overwritten" warnings and, worse, an
+# UndefVarError inside the function's local scope, since `@model`'s
+# generated `function m(...)` def always binds at module/global scope
+# regardless of which branch of the `if` textually contains it).
+Turing.@model function turing_density_f64(y)
     mu ~ Normal(0, 1)
     sigma ~ Exponential(1)
     for i in eachindex(y)
@@ -71,33 +115,54 @@ Turing.@model function turing_tilde_many_obs(y)
     end
 end
 
-Turing.@model function turing_addlogprob_many_obs(y)
+Turing.@model function turing_density_f32(y)
+    mu ~ Normal(0.0f0, 1.0f0)
+    sigma ~ Exponential(1.0f0)
+    for i in eachindex(y)
+        y[i] ~ Normal(mu, sigma)
+    end
+end
+
+Turing.@model function turing_addlogprob_f64(y)
     mu ~ Normal(0, 1)
     sigma ~ Exponential(1)
     Turing.@addlogprob! sum(logpdf.(Normal(mu, sigma), y))
 end
 
-turing_tilde_model = turing_tilde_many_obs(y_speed)
-turing_addlogprob_model = turing_addlogprob_many_obs(y_speed)
-# `Turing.VarInfo` isn't directly exported in this version; the underlying
-# type lives in DynamicPPL (a Turing dependency, added here directly so we
-# can reach it).
-turing_vi = DynamicPPL.VarInfo(turing_tilde_model)
-turing_vi_add = DynamicPPL.VarInfo(turing_addlogprob_model)
-
-# warmup (compilation) before timing
-turing_tilde_model(turing_vi)
-turing_addlogprob_model(turing_vi_add)
-
-t_turing_tilde = @elapsed for _ in 1:200
-    turing_tilde_model(turing_vi)
-end
-t_turing_addlogprob = @elapsed for _ in 1:200
-    turing_addlogprob_model(turing_vi_add)
+Turing.@model function turing_addlogprob_f32(y)
+    mu ~ Normal(0.0f0, 1.0f0)
+    sigma ~ Exponential(1.0f0)
+    Turing.@addlogprob! sum(logpdf.(Normal(mu, sigma), y))
 end
 
-println("Turing tilde timing (200 evals): ", t_turing_tilde, "s")
-println("Turing @addlogprob! timing (200 evals): ", t_turing_addlogprob, "s")
+function bench_turing_density(T, n; reps=30)
+    rng_local = StableRNG(n + (T == Float32 ? 1 : 0))
+    y = T.(randn(rng_local, n))
+    model = T == Float64 ? turing_density_f64(y) : turing_density_f32(y)
+    vi = DynamicPPL.VarInfo(model)
+    return time_reps(() -> model(vi), "Turing density (T=$T, n=$n)"; reps=reps)
+end
+
+function bench_turing_addlogprob(T, n; reps=30)
+    rng_local = StableRNG(n + (T == Float32 ? 1 : 0) + 100)
+    y = T.(randn(rng_local, n))
+    model = T == Float64 ? turing_addlogprob_f64(y) : turing_addlogprob_f32(y)
+    vi = DynamicPPL.VarInfo(model)
+    return time_reps(() -> model(vi), "Turing @addlogprob! (T=$T, n=$n)"; reps=reps)
+end
+
+shapes = ((20, "tiny"), (50_000, "large"))
+precisions = (Float64, Float32)
+
+results = Dict{Tuple{String,String},TimingResult}()
+for (n, shapename) in shapes, T in precisions
+    r_tilde = bench_turing_density(T, n)
+    r_add = bench_turing_addlogprob(T, n)
+    println(r_tilde.label, ": median=", r_tilde.median_s, "s  first_call=", r_tilde.first_call_s, "s")
+    println(r_add.label, ": median=", r_add.median_s, "s  first_call=", r_add.first_call_s, "s")
+    results[(shapename, "$(T)_tilde")] = r_tilde
+    results[(shapename, "$(T)_addlogprob")] = r_add
+end
 
 # ===========================================================================
 # Write the reference file. Plain Julia literals only — no Turing types
@@ -110,10 +175,23 @@ open(out_path, "w") do io
     println(io, "# Regenerate only if the reference models themselves change (see that")
     println(io, "# script for why this can't just be a live comparison at test time).")
     println(io, "# Captured against Turing v$(pkgversion(Turing)) on $(Sys.MACHINE), $(now())")
+    println(io, "#")
+    println(io, "# NOTE: the Float32 rows use Float32 data/model literals, but Turing/")
+    println(io, "# DynamicPPL's getlogjoint promotes internally back to Float64 regardless")
+    println(io, "# (confirmed directly) — this is NOT an apples-to-apples Float32-compute")
+    println(io, "# comparison on Turing's side; that gap is itself part of what's measured.")
     println(io)
     println(io, "const TURING_REFERENCE = (")
     println(io, "    accuracy = (mu_mean = ", turing_mu_mean, ", mu_std = ", turing_mu_std, "),")
-    println(io, "    speed = (tilde_seconds = ", t_turing_tilde, ", addlogprob_seconds = ", t_turing_addlogprob, "),")
+    println(io, "    speed = Dict(")
+    for ((shapename, key), r) in results
+        println(
+            io,
+            "        (\"$shapename\", \"$key\") => (first_call_s=", r.first_call_s,
+            ", min_s=", r.min_s, ", median_s=", r.median_s, ", mean_s=", r.mean_s, ", std_s=", r.std_s, "),",
+        )
+    end
+    println(io, "    ),")
     println(io, ")")
 end
 println("Wrote reference to: ", out_path)

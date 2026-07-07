@@ -33,7 +33,7 @@
 
 using Distributions: Normal, Exponential, logpdf
 using StableRNGs: StableRNG
-using Statistics: mean, std
+using Statistics: mean, median, std
 using ADTypes: AutoForwardDiff
 import LogDensityProblems
 import AbstractMCMC
@@ -80,36 +80,41 @@ if isfile(_REFERENCE_PATH)
         @test abs(mean(pb_mu_draws) - TURING_REFERENCE.accuracy.mu_mean) < 0.2
     end
 
-    @testset "turing_comparison.jl: speed — observe-heavy model vs frozen Turing reference" begin
-        rng = StableRNG(7)
-        y = randn(rng, 10_000)
-
+    @testset "turing_comparison.jl: speed — tiny/large × Float64/Float32 vs frozen Turing reference" begin
+        # Same shape/precision matrix as bench/suite.jl (tiny=20 obs,
+        # large=50_000 obs) and the SAME data-generation procedure as
+        # generate_turing_reference.jl, so medians are actually comparable
+        # rather than an apples-to-oranges single point.
         @model function pb_many_obs(y)
             mu ~ Normal(0, 1)
             sigma ~ Exponential(1)
             y .~ Normal.(mu, sigma)
         end
 
-        pb_model = pb_many_obs(y)
-        pb_layout, pb_θ0, pb_store0 = build_layout(pb_model)
-        pb_ldf = LogDensityFunction(pb_model, pb_layout, pb_store0)
-
-        # warmup (compilation) before timing, matching the reference script
-        LogDensityProblems.logdensity(pb_ldf, pb_θ0)
-        t_pb = @elapsed for _ in 1:200
-            LogDensityProblems.logdensity(pb_ldf, pb_θ0)
+        function pb_density_median(T, n; reps=30)
+            rng = StableRNG(n + (T == Float32 ? 1 : 0))
+            y = T.(randn(rng, n))
+            m = pb_many_obs(y)
+            layout, θ0, store0 = build_layout(m; T=T)
+            ldf = LogDensityFunction(m, layout, store0)
+            LogDensityProblems.logdensity(ldf, θ0)  # warmup
+            times = [(@elapsed LogDensityProblems.logdensity(ldf, θ0)) for _ in 1:reps]
+            return median(times)
         end
 
-        @info "observe-heavy timing (200 evals)" pb = t_pb turing_tilde = TURING_REFERENCE.speed.tilde_seconds turing_addlogprob = TURING_REFERENCE.speed.addlogprob_seconds
-
-        # The headline requirement: PracticalBayes' plain `~`/`.~` observe
-        # should be roughly competitive with Turing's `@addlogprob!` escape
-        # hatch (generous slack — this is a smoke-level regression guard
-        # against the FROZEN reference numbers, not a strict benchmark; see
-        # bench/observe_overhead.jl for the real microbenchmark against a
-        # framework-free loop), and comfortably faster than Turing's ordinary `~`.
-        @test t_pb < 3 * TURING_REFERENCE.speed.addlogprob_seconds
-        @test t_pb < 3 * TURING_REFERENCE.speed.tilde_seconds
+        for (n, shapename) in ((20, "tiny"), (50_000, "large")), T in (Float64, Float32)
+            t_pb = pb_density_median(T, n)
+            ref_tilde = TURING_REFERENCE.speed[(shapename, "$(T)_tilde")].median_s
+            ref_add = TURING_REFERENCE.speed[(shapename, "$(T)_addlogprob")].median_s
+            @info "density timing, $shapename n=$n T=$T" pb = t_pb turing_tilde = ref_tilde turing_addlogprob = ref_add
+            # Generous slack (this is a smoke-level regression guard against
+            # frozen reference numbers on a DIFFERENT machine, not a strict
+            # benchmark — see bench/suite.jl, run locally, for the real
+            # multi-rep comparison): PracticalBayes should be within a small
+            # constant factor of Turing's own `~`/`@addlogprob!` at both scales.
+            @test t_pb < 5 * ref_add
+            @test t_pb < 5 * ref_tilde
+        end
     end
 else
     @testset "turing_comparison.jl" begin

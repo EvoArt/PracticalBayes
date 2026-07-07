@@ -50,6 +50,7 @@ import AdvancedHMC
 
 struct TimingResult
     label::String
+    first_call_s::Float64  # includes JIT compilation — what a user sees the very first time
     min_s::Float64
     median_s::Float64
     mean_s::Float64
@@ -61,6 +62,7 @@ function Base.show(io::IO, r::TimingResult)
     print(
         io,
         rpad(r.label, 46),
+        "  first_call=", _fmt(r.first_call_s),
         "  min=", _fmt(r.min_s), "  median=", _fmt(r.median_s), "  mean=", _fmt(r.mean_s), "  std=", _fmt(r.std_s),
         "  (n=", r.reps, ")",
     )
@@ -70,19 +72,24 @@ _fmt(t) = t < 1e-3 ? string(round(t * 1e6; digits=2), "µs") : string(round(t * 
 """
     time_reps(f, label; reps=30) -> TimingResult
 
-Calls `f()` once (discarded — JIT warmup) then `reps` more times, timing
-each call individually with `@elapsed`. Explicit fixed repetition count,
-unlike BenchmarkTools' adaptive budget, specifically so expensive
+Calls `f()` once and records that call's time SEPARATELY as `first_call_s`
+(this includes JIT compilation — the latency a user actually experiences
+the very first time they run a given model/backend/precision combination,
+which matters disproportionately for small/quick models where steady-state
+cost is tiny by comparison), then calls it `reps` more times to build the
+steady-state min/median/mean/std distribution. Explicit fixed repetition
+count, unlike BenchmarkTools' adaptive budget, specifically so expensive
 configurations (a real NUTS run, Enzyme/Mooncake tape building, etc.) still
-get a meaningful sample size instead of silently collapsing to N=1.
+get a meaningful steady-state sample size instead of silently collapsing to
+N=1.
 """
 function time_reps(f, label; reps=30)
-    f()  # warmup: triggers compilation, not timed
+    first_call_s = @elapsed f()
     times = Vector{Float64}(undef, reps)
     for i in 1:reps
         times[i] = @elapsed f()
     end
-    return TimingResult(label, minimum(times), median(times), mean(times), std(times), reps)
+    return TimingResult(label, first_call_s, minimum(times), median(times), mean(times), std(times), reps)
 end
 
 # ===========================================================================
