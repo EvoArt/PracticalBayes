@@ -73,6 +73,7 @@ macro model(expr)
     # statement (rare, but legal Julia).
     body = _rewrite_walrus(def[:body])
     body = _rewrite_tildes(body, argnames)
+    body = _rewrite_addlogprob(body)
     body = _rewrite_returns(body)
 
     # Build the evaluator's `Dict` in the same shape `splitdef` produces, so
@@ -313,6 +314,48 @@ function _dot_tilde_expansion(lhs, rhs, argnames)
     s = lhs
     return quote
         (__acc__) = PracticalBayes.tilde_dot(__mode__, $(Val)($(QuoteNode(s))), $(lhs), $(rhs), __acc__)
+    end
+end
+
+"""
+    @addlogprob!(expr)
+
+Only valid inside an `@model` body. Adds `expr`'s value directly to the
+model's accumulated log-LIKELIHOOD (not prior) — the escape hatch for a
+scalar log-density term that doesn't come from a `~`/`.~` site against a
+`Distribution`, e.g. a hand-written marginal likelihood (summing out a
+discrete latent via a forward algorithm) or any other manually-computed
+contribution. Outside a model body this macro does nothing useful on its
+own; `@model`'s compiler recognizes and rewrites the `@addlogprob!(...)`
+call form textually (via `_rewrite_addlogprob`, mirroring how `~`/`.~`/`:=`
+are recognized), so this definition exists only so the bare syntax parses
+and gives a clear error if it's ever evaluated outside a model body.
+"""
+macro addlogprob!(expr)
+    return :(error(
+        "`@addlogprob!` can only be used inside an `@model` function body " *
+        "(it is rewritten at model-compile time, not evaluated directly)",
+    ))
+end
+
+# Recognizes `@addlogprob!(expr)` / `@addlogprob! expr` anywhere in the model
+# body and rewrites it to accumulate directly into the log-likelihood via the
+# same `acc_lik` primitive every observe site (`tilde`/`tilde_dot`) already
+# uses — see tilde.jl. Matches on the macro NAME only (`x.args[1] ==
+# Symbol("@addlogprob!")`), not via `@capture`, since MacroTools doesn't have
+# a macrocall-matching helper as convenient as its call-form ones; a
+# macrocall's `args` are `(macro_name, __source__::LineNumberNode, actual_args...)`,
+# so the expression itself is always `x.args[3]` for the one-argument form
+# this macro supports.
+function _rewrite_addlogprob(body)
+    return postwalk(body) do x
+        if x isa Expr && x.head == :macrocall && x.args[1] == Symbol("@addlogprob!")
+            length(x.args) == 3 || error("`@addlogprob!` takes exactly one expression, got: $x")
+            expr = x.args[3]
+            return :(__acc__ = PracticalBayes.acc_lik(__acc__, $(expr)))
+        else
+            x
+        end
     end
 end
 

@@ -1,0 +1,297 @@
+using AbstractMCMC: AbstractMCMC
+using AdvancedHMC: AdvancedHMC
+using ADTypes: AutoForwardDiff
+import LogDensityProblems
+
+# ===========================================================================
+# Block identity: a Symbol or tuple of Symbols, matching `build_layout`'s
+# existing `flat=`/`values=` contract exactly (no `AbstractPPL.VarName` here
+# — this package only ever conditions on whole top-level names, and every
+# other user-facing API already uses plain Symbols for this).
+# ===========================================================================
+
+_normalize_block_names(s::Symbol) = (s,)
+_normalize_block_names(t::Tuple{Vararg{Symbol}}) = t
+
+"""
+    GibbsBlock(names, kernel)
+
+One block of a `Gibbs` sampler: `names` (a `Symbol` or `Tuple` of `Symbol`s)
+identifies which model variables this block owns; `kernel` is either an
+`AbstractHMCSampler` (e.g. `NUTS(0.8)`, sampled via AdvancedHMC) or an
+`AbstractLatentKernel` (a user-supplied non-HMC sampler, see latent.jl).
+"""
+struct GibbsBlock{K,N<:Tuple{Vararg{Symbol}}}
+    names::N
+    kernel::K
+end
+
+"""
+    Gibbs(pairs::Pair...)
+
+A block-wise Gibbs sampler: `Gibbs(:theta => NUTS(0.8), :z => MyKernel())`.
+Each `Pair`'s left side is a `Symbol` or `Tuple{Vararg{Symbol}}` naming the
+block's model variables; the right side is either an `AbstractHMCSampler`
+(NUTS/HMC/HMCDA from AdvancedHMC) or a user's `AbstractLatentKernel`
+subtype. Every assumed variable in the model must appear in EXACTLY one
+block — checked (with a clear error naming any missing/duplicated name) the
+first time `AbstractMCMC.step` runs against a concrete model, since `Gibbs`
+itself is constructed without a model reference (matching how a plain
+`NUTS(0.8)` is also model-agnostic until it's actually used to sample).
+"""
+struct Gibbs{P<:Tuple{Vararg{GibbsBlock}}} <: AbstractMCMC.AbstractSampler
+    blocks::P
+end
+function Gibbs(pairs::Pair...)
+    blocks = ntuple(length(pairs)) do i
+        names, kernel = pairs[i]
+        GibbsBlock(_normalize_block_names(names), kernel)
+    end
+    return Gibbs(blocks)
+end
+
+_is_latent_block(b::GibbsBlock) = b.kernel isa AbstractLatentKernel
+
+# ===========================================================================
+# Per-block persistent state, carried inside GibbsState across sweeps.
+# ===========================================================================
+
+# Sampler block: `layout` (flat = this block's names, values = every other
+# block's names) and `prep` (DI.prepare_gradient) are each built EXACTLY
+# ONCE, at first-step initialization, and never rebuilt — only `store`'s
+# VALUES change sweep to sweep (its field-name set, and therefore the type
+# `prep` was built against, is fixed for the lifetime of a Gibbs run), so
+# reusing `prep` across sweeps via LogDensityFunction's inner constructor is
+# safe and avoids re-tracing/re-preparing the AD backend every single sweep
+# (verified directly: reusing `prep` against a changed-value/same-shape
+# `store` produces bit-identical gradients to a from-scratch
+# LogDensityFunction — see logdensity.jl's docstring on the inner
+# constructor for the general statement of this guarantee).
+struct GibbsSamplerSub{L<:Layout,AD,P,S}
+    layout::L
+    adtype::AD
+    prep::P
+    hmc_state::S  # `nothing` before this block's first step, then an AdvancedHMC.HMCState
+end
+
+# Latent block: no persistent Layout/prep at all — `latent_step` (latent.jl)
+# reads/writes plain NamedTuple values directly, never builds a
+# LogDensityFunction, never touches AD. Any state a kernel itself needs
+# (e.g. an adaptive proposal) lives inside the user's own `kernel` struct,
+# which Gibbs treats as opaque and never mutates.
+struct GibbsLatentSub end
+
+"""
+    GibbsState(values, subs)
+
+`values`: the current constrained-space value of EVERY assumed model
+variable (all blocks merged into one NamedTuple) — this is also what a
+Gibbs sweep returns as its transition. `subs`: a `Tuple`, same length/order
+as the owning `Gibbs`'s `blocks`, of each block's persistent
+`GibbsSamplerSub`/`GibbsLatentSub`.
+"""
+struct GibbsState{V<:NamedTuple,C<:Tuple}
+    values::V
+    subs::C
+end
+
+# ===========================================================================
+# Coverage validation — every assumed name in exactly one block; no
+# discrete/latent-role name assigned to an HMC block.
+# ===========================================================================
+
+function _validate_gibbs_coverage(model::Model, spl::Gibbs)
+    tmode = TraceMode(Random.default_rng(), model.conditioned, NamedTuple())
+    evaluate(model, tmode, Accum(0.0))
+    records = [r for r in tmode.sites]
+    assumed = filter(r -> r.role != :observed, records)
+
+    seen = Dict{Symbol,Int}()  # name -> which block index claims it (first one wins for the error message)
+    all_names = Set{Symbol}()
+    for (i, b) in enumerate(spl.blocks), n in b.names
+        push!(all_names, n)
+        if haskey(seen, n)
+            throw(ArgumentError("variable `$n` is assigned to more than one Gibbs block (blocks $(seen[n]) and $i)"))
+        end
+        seen[n] = i
+    end
+
+    missing_names = Symbol[r.name for r in assumed if !(r.name in all_names)]
+    isempty(missing_names) || throw(ArgumentError(
+        "the following assumed model variable(s) are not assigned to any Gibbs block: " *
+        join(missing_names, ", ") * ". Every assumed variable must appear in exactly one block.",
+    ))
+
+    role_by_name = Dict(r.name => r.role for r in assumed)
+    for (i, b) in enumerate(spl.blocks), n in b.names
+        if !_is_latent_block(b) && get(role_by_name, n, :param) == :latent
+            throw(ArgumentError(
+                "block $i assigns discrete/latent variable `$n` to $(typeof(b.kernel)), an HMC-family " *
+                "sampler — discrete variables need an `AbstractLatentKernel` instead (e.g. a hand-written " *
+                "FFBS/conjugate-Gibbs kernel), since there's no continuous unconstrained encoding for them.",
+            ))
+        end
+    end
+    return records
+end
+
+# ===========================================================================
+# First-step initialization: draw an initial value for every name (from
+# `init` if supplied, else the prior, via one TraceMode pass reused from
+# `_validate_gibbs_coverage`), then build each sampler block's Layout+prep.
+# ===========================================================================
+
+"""
+    _gibbs_init_values(records, init) -> NamedTuple
+
+Draws (or takes from `init`) a starting constrained-space value for every
+assumed model variable. `records` is one `SiteRecord` per tilde site VISIT
+— for an ordinary scalar `x ~ dist` that's one record, but for an indexed
+family (`x[i] ~ dist` inside a loop) it's one record PER INDEX, all sharing
+the same `name`. Mirrors `build_layout`'s own by-name grouping (layout.jl)
+so an indexed family's initial value ends up as the full vector/array
+(ordered by first-seen index), not just whichever record happens to be
+last in `records` — the naive "one Dict entry per name, keep overwriting"
+approach silently collapses a whole latent trajectory (e.g. an HMM's `z`)
+down to its last timestep's scalar value, which is a correctness bug, not
+just a style nit (confirmed the hard way: it crashes downstream inside
+`_assume_index` with a `BoundsError` from indexing a scalar `Int`).
+"""
+function _gibbs_init_values(records, init::NamedTuple)
+    seen_order = Symbol[]
+    by_name = Dict{Symbol,Vector}()
+    for r in records
+        r.role == :observed && continue
+        if !haskey(by_name, r.name)
+            push!(seen_order, r.name)
+            # Concretely typed from the very first record's `init_val`
+            # (e.g. `Vector{Int}` for a `Categorical`-typed indexed family,
+            # `Vector{Float64}` for a continuous one) — NOT `Any[]`. This
+            # matters beyond tidiness: `_init_block_sub` builds `store0`
+            # (and therefore `DI.prepare_gradient`'s `prep`) from THIS
+            # NamedTuple's element types, and `DifferentiationInterface`
+            # strictly checks that every later sweep's `store` has the
+            # exact same types `prep` was built against — a `Vector{Any}`
+            # here vs. a concretely-typed `Vector{Int64}` from a real
+            # `latent_step` call is a genuine type mismatch that DI
+            # correctly rejects at sweep time with a `PreparationMismatchError`
+            # (confirmed the hard way).
+            by_name[r.name] = [r.init_val]
+        else
+            push!(by_name[r.name], r.init_val)
+        end
+    end
+    pairs = Pair{Symbol,Any}[]
+    for name in seen_order
+        vals = by_name[name]
+        default = length(vals) == 1 ? vals[1] : vals
+        push!(pairs, name => (haskey(init, name) ? getfield(init, name) : default))
+    end
+    return NamedTuple(pairs)
+end
+
+function _init_block_sub(model::Model, block::GibbsBlock, values0::NamedTuple; adtype=AutoForwardDiff())
+    if _is_latent_block(block)
+        return GibbsLatentSub()
+    end
+    other_names = Tuple(k for k in keys(values0) if !(k in block.names))
+    own_init = NamedTuple{block.names}(Tuple(values0[k] for k in block.names))
+    layout, θ0, _ = build_layout(model; flat=block.names, values=other_names, init=own_init)
+    store0 = NamedTuple{other_names}(Tuple(values0[k] for k in other_names))
+    ldf0 = LogDensityFunction(model, layout, store0, adtype; θ0=θ0)
+    return GibbsSamplerSub(layout, adtype, ldf0.prep, nothing)
+end
+
+# ===========================================================================
+# AbstractMCMC.step — the two entry points AdvancedHMC's own sampler
+# follows: no-state (first call) and with-state (every subsequent call).
+# ===========================================================================
+
+"""
+    AbstractMCMC.step(rng, model::Model, spl::Gibbs; init=NamedTuple(), adtype=AutoForwardDiff(), kwargs...)
+
+First call: validates block coverage, draws (or takes from `init`) a
+starting value for every assumed variable, builds each sampler block's
+`Layout` once, and takes the first sweep. `adtype` is used for every HMC
+block uniformly (per-block AD backends are not yet supported — a natural
+later extension, not needed for the M3 gates).
+"""
+function AbstractMCMC.step(rng::Random.AbstractRNG, model::Model, spl::Gibbs; init=NamedTuple(), adtype=AutoForwardDiff(), kwargs...)
+    records = _validate_gibbs_coverage(model, spl)
+    values0 = _gibbs_init_values(records, init)
+    subs0 = ntuple(i -> _init_block_sub(model, spl.blocks[i], values0; adtype=adtype), length(spl.blocks))
+    state = GibbsState(values0, subs0)
+    return AbstractMCMC.step(rng, model, spl, state; kwargs...)
+end
+
+"""
+    AbstractMCMC.step(rng, model::Model, spl::Gibbs, state::GibbsState; n_adapts=0, kwargs...)
+
+One Gibbs sweep: a fixed (systematic-scan) pass over `spl.blocks` in
+declaration order. A LATENT block calls `latent_step` exactly once — this
+call is lexically outside any AD entry point (the only functions ever
+passed to `DI.prepare_gradient`/`DI.value_and_gradient` are
+`_logdensity_call`/`_loglikelihood_call` in logdensity.jl) and outside
+AdvancedHMC's internal leapfrog/tree-doubling loop (entirely private to a
+SAMPLER block's own `AbstractMCMC.step` call below) — this lexical
+separation, not a runtime flag, is what guarantees a latent kernel never
+runs mid-gradient. A SAMPLER block rebuilds its `LogDensityFunction` against
+every OTHER block's current value (reusing the cached `Layout`/`prep` from
+`GibbsSamplerSub`, never rebuilding either), refreshes the cached
+`HMCState`'s phasepoint via `setparams!!` (or takes a fresh first step if
+this is the block's first-ever sweep), then steps.
+
+IMPORTANT — `n_adapts` GOTCHA (an AdvancedHMC calling-convention quirk, not
+specific to Gibbs, but easy to hit here): pass `n_adapts` as its FINAL
+target value on every call, starting from the very first sweep — do NOT
+ramp it up (e.g. `n_adapts=min(sweep, 500)`). AdvancedHMC's windowed
+`StanHMCAdaptor` calls `initialize!(adaptor, n_adapts)` — which locks in
+the entire Stan-style adaptation window schedule — only on a block's
+FIRST-EVER internal step; whatever `n_adapts` value is passed on that first
+call fixes the window size for the rest of the run, regardless of what's
+passed on later sweeps. Passing a small value on sweep 1 (e.g. via a
+`min(i, n_adapts)` ramp starting at `i=1`) silently disables step-size/mass-
+matrix adaptation for the block's entire lifetime — the chain still runs
+and still (very slowly) explores via NUTS's own occasional lucky proposals,
+so this fails silently as a badly-mixing, highly-autocorrelated chain
+rather than an error. Confirmed directly while building this milestone's
+test suite.
+"""
+function AbstractMCMC.step(rng::Random.AbstractRNG, model::Model, spl::Gibbs, state::GibbsState; n_adapts::Int=0, kwargs...)
+    values = state.values
+    new_subs = Vector{Any}(undef, length(spl.blocks))
+    for i in eachindex(spl.blocks)
+        block = spl.blocks[i]
+        sub = state.subs[i]
+        if _is_latent_block(block)
+            c = ModelConditional(model, values)
+            newvals = latent_step(rng, block.kernel, block.names, c)
+            keys(newvals) == block.names || throw(ArgumentError(
+                "latent_step for block $(block.names) must return a NamedTuple with exactly those keys, got $(keys(newvals))",
+            ))
+            values = merge(values, newvals)
+            new_subs[i] = GibbsLatentSub()
+        else
+            other_names = Tuple(k for k in keys(values) if !(k in block.names))
+            store = NamedTuple{other_names}(Tuple(values[k] for k in other_names))
+            own = NamedTuple{block.names}(Tuple(values[k] for k in block.names))
+            θ_now = link(sub.layout, own)
+
+            ldf = LogDensityFunction(model, sub.layout, store, sub.adtype, sub.prep, false)
+            ldm = AbstractMCMC.LogDensityModel(ldf)
+
+            if sub.hmc_state === nothing
+                _, hmc_state = AbstractMCMC.step(rng, ldm, block.kernel; initial_params=θ_now, kwargs...)
+            else
+                refreshed = AbstractMCMC.setparams!!(ldm, sub.hmc_state, θ_now)
+                _, hmc_state = AbstractMCMC.step(rng, ldm, block.kernel, refreshed; n_adapts=n_adapts, kwargs...)
+            end
+            θ_new = AbstractMCMC.getparams(hmc_state)
+            newvals = invlink(sub.layout, θ_new; include_untracked=true)
+            values = merge(values, newvals)
+            new_subs[i] = GibbsSamplerSub(sub.layout, sub.adtype, sub.prep, hmc_state)
+        end
+    end
+    newstate = GibbsState(values, Tuple(new_subs))
+    return values, newstate
+end

@@ -27,6 +27,21 @@ than crashing the whole chain. Off by default so genuine bugs (e.g. a typo'd
 distribution argument) still fail loudly; turn it on once a model is known to
 be correct but can hit numerically-degenerate corners (e.g. a `Cholesky`
 factorization failing on an ill-conditioned covariance draw).
+
+There is also a fully-positional inner constructor,
+`LogDensityFunction(model, layout, store, adtype, prep, reject_errors)`,
+which is the SUPPORTED way to reuse an already-`prep`ared gradient
+tape/config against a NEW `store` — e.g. Gibbs (gibbs.jl) rebuilds a sampler
+block's `LogDensityFunction` every sweep with an updated `store` (other
+blocks' latest values) but must NOT re-run `DI.prepare_gradient` every
+sweep (expensive for tape-based backends like ReverseDiff). This is safe as
+long as `store`'s FIELD-NAME SET (and therefore its `NamedTuple` type) is
+unchanged from what `prep` was built against — only the *values* may
+differ. Verified directly: swapping `store`'s value while reusing `prep`
+produces bit-identical `logdensity_and_gradient` results to building a
+fresh `LogDensityFunction` from scratch (checked for `AutoForwardDiff`; not
+yet re-verified for tape-based reverse-mode backends — flag this if Gibbs
+is ever used with one of those and something looks off).
 """
 struct LogDensityFunction{M<:Model,L<:Layout,S<:NamedTuple,AD,P}
     model::M

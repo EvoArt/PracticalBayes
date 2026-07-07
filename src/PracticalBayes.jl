@@ -20,8 +20,10 @@ include("tilde.jl")
 include("compiler.jl")
 include("logdensity.jl")
 include("optimize.jl")
+include("latent.jl")
+include("gibbs.jl")
 
-export @model, Model, condition, decondition
+export @model, Model, condition, decondition, @addlogprob!
 export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
@@ -30,5 +32,7 @@ export AbstractEvalMode, TraceMode, EvalMode, PriorMode, FixedMode
 export evaluate, paramtype
 export maximum_a_posteriori, maximum_likelihood, laplace_approximation
 export PointEstimate, LaplaceApproximation, laplace_mvnormal
+export AbstractLatentKernel, ModelConditional, latent_step
+export Gibbs, GibbsState
 
 end # module PracticalBayes
