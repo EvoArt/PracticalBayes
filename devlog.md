@@ -7,6 +7,149 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
+## 2026-07-07 (latest) — real bug in indexed tilde under AD, full Turing parity, AD-crossover confirmed
+
+Three things happened in one push, triggered directly by user feedback on
+the benchmark methodology ("we should be doing everything we do in our
+package in turing as well"; "we should have models where reverse mode beats
+forward mode AD"; "we should be testing on discrete likelihoods").
+
+### Real bug found: indexed `x[i] ~ dist` families crash under ANY AD backend
+
+Building a many-parameter (K=200) regression model to test the forward-vs-
+reverse-mode crossover immediately hit a `MethodError`/`InexactError`: the
+documented pattern for an indexed family, `x = Vector{Float64}(undef, n)`,
+cannot hold the `Dual` (or other AD-backend-specific) numbers a gradient
+call needs to write into it. This is a REAL bug affecting every existing
+test/doc example using this pattern (`test/compiler.jl`, `test/layout.jl`)
+— none had ever been run through a gradient, which is exactly why it went
+undiscovered until now (a lesson in itself: allocation-profiling and
+correctness-checking a code path are not substitutes for exercising it
+under every mode it's actually meant to support).
+
+Fix: added `paramtype(mode)` (modes.jl) — `eltype(mode.θ)` for `EvalMode`
+(so it tracks Float64/Float32/Dual/whatever the current evaluation actually
+needs), `Float64` for the other three (never-differentiated) modes. Model
+authors now write `x = Vector{paramtype(__mode__)}(undef, n)`. This is
+directly modeled on DynamicPPL's own fix for the identical problem — Turing
+models take a `::Type{T}=Float64` argument that DynamicPPL's compiler
+rewrites per call to match the current parameter element type
+(`promote_model_type_argument`, `packages/DynamicPPL/HDqaI/src/compiler.jl:818-839`)
+— but simpler, since our compiler doesn't need to intercept model
+*construction* the way DynamicPPL does: `__mode__` is already a real,
+in-scope argument to the generated evaluator function, so `paramtype` just
+reads the type straight off it. Added a regression test
+(`test/compiler.jl`: "indexed tilde differentiates correctly") that
+actually calls `logdensity_and_gradient` on an indexed-family model, so this
+specific failure mode can never silently regress again. Fixed the two
+existing examples in `test/compiler.jl`/`test/layout.jl` that used the
+broken pattern (neither was actually broken today, since neither happened
+to be differentiated, but both were teaching the wrong thing).
+
+### Full layer parity between the PracticalBayes and Turing benchmark sides
+
+Previously `generate_turing_reference.jl` only measured Turing's
+density-only cost (Layer 1) while our own `bench/suite.jl` had gradient
+(Layer 2, per AD backend) and NUTS (Layer 3) too — an asymmetry the user
+caught directly ("why are we still doing density only for turing?"). Fixed:
+`generate_turing_reference.jl` now benchmarks Turing on exactly the same
+three layers, via `DynamicPPL.LogDensityFunction(model; adtype=...)` for
+gradients (mirrors our own `LogDensityFunction` closely — same
+`LogDensityProblems.logdensity_and_gradient` interface) and `Turing.sample`
+for NUTS.
+
+### Two new model shapes: many-parameter and discrete-likelihood
+
+Both tiny/large shapes had exactly 2 continuous parameters and a Normal
+likelihood — a regime picked, unintentionally, to make forward-mode AD look
+uniformly best and to never exercise a non-Gaussian `logpdf`. Added:
+
+- **`manyparam_model`** (K=200 regression coefficients, N=2000 observations)
+  on both sides (`bench/suite.jl` / `generate_turing_reference.jl`'s
+  `turing_manyparam`). Result — the crossover the user predicted, confirmed
+  on BOTH packages: at K=200, ForwardDiff is now the SLOWEST backend by a
+  wide margin (PracticalBayes ~25ms median, Turing ~23-38ms across runs),
+  while Mooncake (~1.2-1.8ms) and Enzyme (~1.9-2.2ms) are 10-20x faster —
+  reverse-mode wins decisively once parameter count is large, exactly as
+  expected from AD theory and invisible in the 2-parameter shapes.
+  PracticalBayes's Mooncake/Enzyme numbers came out faster than Turing's
+  equivalents on this model; PracticalBayes's ForwardDiff came out somewhat
+  slower than Turing's — worth another look, plausibly related to
+  `FlatArraySlot`'s per-element bijector-transform overhead (200 individual
+  `from_linked_vec`/`with_logabsdet_jacobian` calls vs whatever vectorized
+  path Turing's `MvNormal` prior takes) rather than a general regression.
+- **`poisson_model`** (discrete-likelihood — Poisson-distributed
+  observations, NOT a discrete latent/marginalization case) on both sides.
+  PracticalBayes tracks a raw hand-written Poisson-loglikelihood loop
+  closely (1.04-1.27x, same ballpark as the Normal-likelihood shapes),
+  confirming the hot path is equally fast for a discrete pmf as for a
+  continuous density.
+
+### New limitation found: Enzyme + Union types + Float32 + this model
+
+`Enzyme gradient (manyparam K=200, T=Float32, ...)` fails with
+`IllegalTypeAnalysisException` ("usually indicates the use of a Union
+type") — reproducible, Float32-specific, manyparam-model-specific (Float64
+works fine on the same model). Not yet root-caused (a Union somewhere in
+the generated code's type — possibly from `_assume_index`'s
+`ValueSlot`/`FlatArraySlot` dispatch not fully resolving under Enzyme's
+stricter type analysis at Float32). `bench/suite.jl`'s per-backend gradient
+loops now wrap each backend in a try/catch (report `FAILED` + truncated
+error, keep going) so one backend's failure never aborts the whole
+benchmark run again — this itself was a real bug found in the same session
+(the very first manyparam run crashed the entire suite on this exact error).
+
+### Numbers snapshot (this machine, this session)
+
+Full first-pass PracticalBayes-vs-Turing summary table (tiny/large x
+Float64/Float32 x AD backend, plus manyparam/Poisson) is in
+`bench/suite.jl`'s and `generate_turing_reference.jl`'s output — an
+Artifact table was also produced mid-session but reflects the numbers
+BEFORE the manyparam/Poisson/paramtype-fix additions; regenerate before
+relying on it for anything beyond the density-only tiny/large comparison.
+
+## Note for later — DynamicPPL.TestUtils.AD.run_ad
+
+DynamicPPL has an AD-backend benchmarking utility
+(`DynamicPPL.TestUtils.AD.run_ad`, `packages/DynamicPPL/HDqaI/src/test_utils/ad.jl`,
+plus a standalone pretty-printing wrapper in `packages/DynamicPPL/HDqaI/benchmarks/benchmarks.jl`)
+that builds a `LogDensityFunction` from a `DynamicPPL.Model` for a given
+`AbstractADType`, then uses Chairmarks.jl's `@be` to time
+`logdensity`/`logdensity_and_gradient` over a time budget and report
+`grad_time`/`primal_time`, optionally checking gradient correctness against
+another backend first. Checked whether we could hook into it directly:
+NOT reusable as-is — `run_ad`'s signature takes `model::DynamicPPL.Model`
+and hard-codes DynamicPPL-internal concepts (`getlogjoint_internal`,
+`AbstractTransformStrategy`, `LinkAll`) to build its own `LogDensityFunction`;
+there's no path for handing it an arbitrary LogDensityProblems-compatible
+object. The underlying idea (time `logdensity`/`logdensity_and_gradient` per
+backend, print a table) is generic and simple (~15 lines in their own
+`benchmarks.jl`) — we've already effectively built the same pattern
+ourselves in `bench/suite.jl`'s `time_reps`/Layer 2. Noting this so a future
+session doesn't waste time trying to wire into DynamicPPL's version instead
+of just extending our own; if we ever want Chairmarks-quality statistics
+(vs our hand-rolled fixed-rep loop) for the AD-comparison layer
+specifically, that's the place to look for a reference implementation.
+
+## 2026-07-07 (even later) — going after the full benchmark corpus
+
+User wants (in order): (1) a clean summary table of PracticalBayes-vs-Turing
+timings across model sizes/structures and AD backends (building on
+`bench/suite.jl` and the `test/comparison_env` reference-freezing approach);
+(2) then benchmarking against every model in
+https://github.com/JasonPekos/TuringPosteriorDB.jl/tree/main/src/models;
+(3) then the same for every tutorial model in
+https://github.com/TuringLang/docs/tree/main/tutorials. This is a large,
+open-ended expansion of the benchmark corpus beyond the two synthetic
+tiny/large models used so far — noting the intent here before starting so
+future sessions have the context even if this spans multiple sittings.
+Real constraint to work around throughout: Turing still cannot be loaded in
+the same process as PracticalBayes (AbstractPPL 0.14 vs 0.15), so every
+Turing-side model in this corpus has to be ported/reimplemented in
+PracticalBayes' own `@model` syntax by hand and run through the same
+freeze-Turing's-numbers-separately pipeline `test/comparison_env` already
+established, not a live side-by-side run.
+
 ## 2026-07-07 (later) — proper benchmark harness, two more findings
 
 The single-number, single-backend, single-model-size speed comparison from

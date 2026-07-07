@@ -5,6 +5,8 @@
 # values, not here.
 
 using Distributions: Normal, Exponential, logpdf
+using ADTypes: AutoForwardDiff
+import LogDensityProblems
 
 @testset "compiler.jl: @model basics" begin
     @model function simple_normal(y)
@@ -47,8 +49,12 @@ using Distributions: Normal, Exponential, logpdf
 end
 
 @testset "compiler.jl: indexed tilde `x[i] ~ dist`" begin
+    # `Vector{paramtype(__mode__)}(undef, n)`, NOT `Vector{Float64}(undef, n)`
+    # — see the REQUIRED note on `tilde_index`'s docstring (tilde.jl):
+    # hardcoding Float64 crashes under any AD backend since the container
+    # can't hold the Dual numbers a gradient call needs to write into it.
     @model function indexed_model(n)
-        x = Vector{Float64}(undef, n)
+        x = Vector{paramtype(__mode__)}(undef, n)
         for i in 1:n
             x[i] ~ Normal(0, 1)
         end
@@ -59,6 +65,28 @@ end
     layout, θ0, _ = build_layout(m)
     @test layout.dim == 3
     @test layout.slots.x isa PracticalBayes.FlatArraySlot
+end
+
+@testset "compiler.jl: indexed tilde differentiates correctly (regression: paramtype)" begin
+    # Regression test for a real bug found while benchmarking: a
+    # `Vector{Float64}(undef, n)`-declared container crashes under ANY AD
+    # backend (can't store a Dual/backend-specific number in a Float64
+    # array). `paramtype(__mode__)` is the fix — verify it actually works
+    # under gradient computation, not just density-only evaluation.
+    @model function indexed_grad_model(n)
+        x = Vector{paramtype(__mode__)}(undef, n)
+        for i in 1:n
+            x[i] ~ Normal(0, 1)
+        end
+        return x
+    end
+
+    m = indexed_grad_model(4)
+    layout, θ0, store0 = build_layout(m)
+    ldf = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0)
+    val, grad = LogDensityProblems.logdensity_and_gradient(ldf, θ0)
+    # each site is `Normal(0,1)`, identity-linked, so analytic gradient is -θ
+    @test grad ≈ -θ0
 end
 
 @testset "compiler.jl: `.~` observe sugar" begin

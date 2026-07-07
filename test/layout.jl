@@ -43,7 +43,7 @@ end
 
 @testset "layout.jl: indexed family -> FlatArraySlot, uniform linked length enforced" begin
     @model function hmm_like(n)
-        z = Vector{Float64}(undef, n)
+        z = Vector{paramtype(__mode__)}(undef, n)
         for i in 1:n
             z[i] ~ Normal(0, 1)
         end

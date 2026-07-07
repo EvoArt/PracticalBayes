@@ -29,6 +29,28 @@ end
     hasfield(typeof(cond), s) ? getfield(cond, s) : nothing
 end
 
+"""
+    paramtype(mode) -> Type{<:Real}
+
+The numeric type this mode is currently evaluating in — `eltype(mode.θ)` for
+`EvalMode` (so it tracks whatever `θ`'s element type is: `Float64`,
+`Float32`, or a `ForwardDiff.Dual`/other AD-backend number type mid-gradient),
+`Float64` for the other three modes (never differentiated).
+
+Model authors need this whenever a model pre-declares a container for an
+indexed family (`x[i] ~ dist`): `x = Vector{Float64}(undef, n)` looks
+harmless but is a real bug under any AD backend, since the container then
+can't hold the `Dual` (or other AD-backend) numbers a gradient call needs to
+write into it — this crashes with a `MethodError`/`InexactError` inside
+`_assume_index`, not silently. Write `x = Vector{paramtype(__mode__)}(undef, n)`
+instead (the same fix DynamicPPL's `@model` uses internally, via a
+`::Type{T}=Float64` model argument it rewrites per call — `paramtype` is the
+simpler equivalent this package's simpler compiler can offer directly,
+reading the type straight off the mode rather than rewriting model arguments
+at construction time).
+"""
+@inline paramtype(::AbstractEvalMode) = Float64  # overridden for EvalMode below, once it's defined
+
 # ---------------------------------------------------------------------------
 # TraceMode: one-shot discovery run. Not on the hot path — allocations here
 # are fine (a Vector{SiteRecord} grows as the model runs). Values are drawn
@@ -81,6 +103,15 @@ end
 # constructed fresh for every logdensity/gradient evaluation, so there is
 # nothing to mutate in place; this also makes it trivially safe to share
 # across threads (one `EvalMode` per chain/thread, never written to).
+
+# Overrides the `AbstractEvalMode` fallback above: `EvalMode` DOES vary its
+# working number type (Float64/Float32 density calls, `Dual` under
+# ForwardDiff, backend-specific number types under Mooncake/Enzyme/etc), so
+# `paramtype` must track `θ`'s actual element type rather than hardcoding
+# `Float64` — this is precisely what lets a model-declared container
+# (`Vector{paramtype(__mode__)}(undef, n)`) come out correctly typed for
+# whichever AD backend (or none) is currently differentiating through it.
+@inline paramtype(mode::EvalMode) = eltype(mode.θ)
 
 # ---------------------------------------------------------------------------
 # PriorMode: draw every assumed site from its prior; record all values

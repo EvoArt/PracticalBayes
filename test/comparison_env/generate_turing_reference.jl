@@ -16,19 +16,27 @@
 # only if the reference MODELS themselves change; ordinary PracticalBayes
 # code changes should never need this rerun.
 #
-# Matches the shape/precision matrix in bench/suite.jl (tiny=20 obs,
-# large=50_000 obs; Float64 and Float32) so the two sides are actually
-# comparable, not just a single arbitrarily-chosen model size.
+# FULL PARITY with bench/suite.jl: same tiny(n=20)/large(n=50_000) x
+# Float64/Float32 matrix, AND the same three layers — (1) density only,
+# (2) density+gradient per available AD backend (via
+# `DynamicPPL.LogDensityFunction(model; adtype=...)`, Turing's own
+# LogDensityProblems-based gradient path — mirrors our own
+# `LogDensityFunction` almost exactly), (3) end-to-end NUTS timing. Whatever
+# this package benchmarks about itself, Turing gets benchmarked on too.
 
 using Pkg
 Pkg.activate(@__DIR__)
 
 using Turing
 using DynamicPPL
+using LogDensityProblems
+using ADTypes
 using StableRNGs: StableRNG
 using Statistics: mean, median, std
-using Distributions: Normal, Exponential, logpdf
+using Distributions: Normal, Exponential, Poisson, MvNormal, logpdf
 using Dates: now
+using Random
+using LinearAlgebra: I, dot
 
 println("Turing version: ", pkgversion(Turing))
 
@@ -84,29 +92,27 @@ turing_mu_std = std(turing_mu_draws)
 println("Turing conjugate posterior: mean=", turing_mu_mean, " std=", turing_mu_std)
 
 # ===========================================================================
-# Speed reference, density-only, over the SAME tiny/large x Float64/Float32
-# matrix as bench/suite.jl. `Turing.VarInfo` isn't directly exported in this
-# version; the underlying type lives in DynamicPPL (added here directly).
+# Model definitions — unconditional top-level (NOT inside a function with an
+# if/else picking between two `@model function m(...)` definitions: that
+# pattern redefines the same top-level name `m` conditionally, which
+# produces "Method definition overwritten" warnings and an UndefVarError
+# inside the function's local scope, since `@model`'s generated
+# `function m(...)` def always binds at module/global scope regardless of
+# which branch of the `if` textually contains it — discovered the hard way
+# earlier in this file's history).
 #
 # IMPORTANT finding, captured explicitly rather than silently worked around:
-# DynamicPPL's `getlogjoint` PROMOTES BACK TO Float64` even when a model is
+# DynamicPPL's `getlogjoint` PROMOTES BACK TO Float64 even when a model is
 # written entirely with Float32 literals (`Normal(0f0, 1f0)` etc) — confirmed
-# by checking `typeof(DynamicPPL.getlogjoint(vi))` on a Float32-literal model
-# before writing this script. This is exactly the "Turing/DynamicPPL forces
-# everything to Float64" limitation motivating this package's numeric-type
-# genericity requirement in the first place (see devlog). So the "Float32"
-# row for Turing below reflects Float32 DATA/model-literals but a Float64
-# computation internally — it is not an apples-to-apples Float32 compute
-# comparison, and that gap IS the point being measured.
+# by checking `typeof(DynamicPPL.getlogjoint(vi))` on a Float32-literal model.
+# This is exactly the "Turing/DynamicPPL forces everything to Float64"
+# limitation motivating this package's numeric-type genericity requirement
+# in the first place. So the "Float32" rows below reflect Float32
+# data/model literals but a Float64 computation internally in most cases —
+# NOT an apples-to-apples Float32-compute comparison on Turing's side; that
+# gap is itself part of what's measured.
 # ===========================================================================
 
-# Defined unconditionally at top level (NOT inside a function with an
-# if/else picking between two `@model function m(...)` definitions — that
-# pattern redefines the same top-level name `m` conditionally, which
-# produces "Method definition overwritten" warnings and, worse, an
-# UndefVarError inside the function's local scope, since `@model`'s
-# generated `function m(...)` def always binds at module/global scope
-# regardless of which branch of the `if` textually contains it).
 Turing.@model function turing_density_f64(y)
     mu ~ Normal(0, 1)
     sigma ~ Exponential(1)
@@ -135,10 +141,18 @@ Turing.@model function turing_addlogprob_f32(y)
     Turing.@addlogprob! sum(logpdf.(Normal(mu, sigma), y))
 end
 
+density_model(T, y) = T == Float64 ? turing_density_f64(y) : turing_density_f32(y)
+addlogprob_model(T, y) = T == Float64 ? turing_addlogprob_f64(y) : turing_addlogprob_f32(y)
+
+# ===========================================================================
+# Layer 1: density only (model(vi) call, matching bench/suite.jl's
+# raw-loop-vs-framework comparison).
+# ===========================================================================
+
 function bench_turing_density(T, n; reps=30)
     rng_local = StableRNG(n + (T == Float32 ? 1 : 0))
     y = T.(randn(rng_local, n))
-    model = T == Float64 ? turing_density_f64(y) : turing_density_f32(y)
+    model = density_model(T, y)
     vi = DynamicPPL.VarInfo(model)
     return time_reps(() -> model(vi), "Turing density (T=$T, n=$n)"; reps=reps)
 end
@@ -146,22 +160,172 @@ end
 function bench_turing_addlogprob(T, n; reps=30)
     rng_local = StableRNG(n + (T == Float32 ? 1 : 0) + 100)
     y = T.(randn(rng_local, n))
-    model = T == Float64 ? turing_addlogprob_f64(y) : turing_addlogprob_f32(y)
+    model = addlogprob_model(T, y)
     vi = DynamicPPL.VarInfo(model)
     return time_reps(() -> model(vi), "Turing @addlogprob! (T=$T, n=$n)"; reps=reps)
 end
 
+# ===========================================================================
+# Layer 2: density + gradient, per AD backend, via
+# `DynamicPPL.LogDensityFunction(model; adtype=...)` — Turing's own
+# LogDensityProblems-based gradient path, the same interface
+# `LogDensityProblems.logdensity_and_gradient` our own `LogDensityFunction`
+# implements. Backends registered the same way as bench/suite.jl: only added
+# if actually installed AND actually `import`ed in this session (DI's
+# per-backend extensions only activate once the backend package is loaded,
+# not merely installed).
+# ===========================================================================
+
+const _AD_BACKENDS = Pair{String,Any}["ForwardDiff" => AutoForwardDiff()]
+if !isnothing(Base.find_package("Mooncake"))
+    @eval import Mooncake
+    push!(_AD_BACKENDS, "Mooncake" => AutoMooncake(; config=nothing))
+end
+if !isnothing(Base.find_package("ReverseDiff"))
+    @eval import ReverseDiff
+    push!(_AD_BACKENDS, "ReverseDiff" => AutoReverseDiff())
+end
+if !isnothing(Base.find_package("Enzyme"))
+    @eval import Enzyme
+    push!(_AD_BACKENDS, "Enzyme" => AutoEnzyme())
+end
+
+function bench_turing_gradient(T, n, backend_name, adtype; reps=30)
+    rng_local = StableRNG(n + (T == Float32 ? 1 : 0) + 200)
+    y = T.(randn(rng_local, n))
+    model = density_model(T, y)
+    ldf = DynamicPPL.LogDensityFunction(model; adtype=adtype)
+    params = zeros(T, LogDensityProblems.dimension(ldf))
+    return time_reps(
+        () -> LogDensityProblems.logdensity_and_gradient(ldf, params), "Turing $backend_name gradient (T=$T, n=$n)"; reps=reps
+    )
+end
+
+# ===========================================================================
+# Layer 3: end-to-end NUTS, same n_samples/reps as bench/suite.jl's
+# bench_nuts, using Turing's own `Turing.sample`. `δ` fixed at Float64 0.8
+# regardless of `T` — unlike AdvancedHMC used directly, Turing's NUTS
+# constructor doesn't require a type-matched acceptance target (Turing
+# handles the promotion internally, consistent with the Float64-promotion
+# finding above).
+# ===========================================================================
+
+function bench_turing_nuts(T, n; n_samples=200, reps=5)
+    rng_local = StableRNG(n + (T == Float32 ? 1 : 0) + 300)
+    y = T.(randn(rng_local, n))
+    model = density_model(T, y)
+    run() = Turing.sample(StableRNG(1), model, Turing.NUTS(0.8), n_samples; progress=false)
+    return time_reps(run, "Turing NUTS $n_samples samples (T=$T, n=$n)"; reps=reps)
+end
+
+# ===========================================================================
+# Layer 2b: MANY-PARAMETER model (K=200, N=2000) — matches
+# bench/suite.jl's `manyparam_model` exactly (same coefficient-vector
+# regression), so forward-vs-reverse-mode AD crossover behavior can be
+# compared on both sides, not just PracticalBayes in isolation.
+# ===========================================================================
+
+Turing.@model function turing_manyparam(X, y)
+    K = size(X, 2)
+    beta ~ MvNormal(zeros(K), I)
+    sigma ~ Exponential(1)
+    for i in eachindex(y)
+        y[i] ~ Normal(dot(view(X, i, :), beta), sigma)
+    end
+end
+
+function make_manyparam_data(k, n, seed)
+    rng_local = StableRNG(seed)
+    X = randn(rng_local, n, k)
+    true_beta = randn(rng_local, k)
+    y = X * true_beta .+ randn(rng_local, n) .* 0.5
+    return X, y
+end
+
+function bench_turing_manyparam_gradient(k, n, backend_name, adtype; reps=20)
+    X, y = make_manyparam_data(k, n, 5)
+    model = turing_manyparam(X, y)
+    ldf = DynamicPPL.LogDensityFunction(model; adtype=adtype)
+    params = zeros(LogDensityProblems.dimension(ldf))
+    return time_reps(
+        () -> LogDensityProblems.logdensity_and_gradient(ldf, params),
+        "Turing $backend_name gradient (manyparam K=$k, n=$n)";
+        reps=reps,
+    )
+end
+
+# ===========================================================================
+# Layer 1b: DISCRETE-LIKELIHOOD (Poisson regression) — matches
+# bench/suite.jl's `poisson_model` exactly.
+# ===========================================================================
+
+Turing.@model function turing_poisson(X, y)
+    K = size(X, 2)
+    beta ~ MvNormal(zeros(K), I)
+    for i in eachindex(y)
+        y[i] ~ Poisson(exp(dot(view(X, i, :), beta)))
+    end
+end
+
+function make_poisson_data(k, n, seed)
+    rng_local = StableRNG(seed)
+    X = randn(rng_local, n, k)
+    true_beta = randn(rng_local, k) .* 0.3
+    y = [rand(rng_local, Poisson(exp(clamp(dot(view(X, i, :), true_beta), -10, 10)))) for i in 1:n]
+    return X, Float64.(y)
+end
+
+function bench_turing_poisson_density(k, n; reps=50)
+    X, y = make_poisson_data(k, n, 6)
+    model = turing_poisson(X, y)
+    vi = DynamicPPL.VarInfo(model)
+    return time_reps(() -> model(vi), "Turing Poisson density (k=$k, n=$n)"; reps=reps)
+end
+
+# ===========================================================================
+# Run everything.
+# ===========================================================================
+
 shapes = ((20, "tiny"), (50_000, "large"))
 precisions = (Float64, Float32)
 
-results = Dict{Tuple{String,String},TimingResult}()
+speed_results = Dict{Tuple{String,String},TimingResult}()
 for (n, shapename) in shapes, T in precisions
     r_tilde = bench_turing_density(T, n)
     r_add = bench_turing_addlogprob(T, n)
     println(r_tilde.label, ": median=", r_tilde.median_s, "s  first_call=", r_tilde.first_call_s, "s")
     println(r_add.label, ": median=", r_add.median_s, "s  first_call=", r_add.first_call_s, "s")
-    results[(shapename, "$(T)_tilde")] = r_tilde
-    results[(shapename, "$(T)_addlogprob")] = r_add
+    speed_results[(shapename, "$(T)_tilde")] = r_tilde
+    speed_results[(shapename, "$(T)_addlogprob")] = r_add
+end
+
+gradient_results = Dict{Tuple{String,String,String},TimingResult}()
+for (n, shapename) in shapes, T in precisions, (backend_name, adtype) in _AD_BACKENDS
+    r = bench_turing_gradient(T, n, backend_name, adtype)
+    println(r.label, ": median=", r.median_s, "s  first_call=", r.first_call_s, "s")
+    gradient_results[(shapename, "$T", backend_name)] = r
+end
+
+nuts_results = Dict{Tuple{String,String},TimingResult}()
+for (n, shapename) in shapes, T in precisions
+    r = bench_turing_nuts(T, n)
+    println(r.label, ": median=", r.median_s, "s  first_call=", r.first_call_s, "s")
+    nuts_results[(shapename, "$T")] = r
+end
+
+manyparam_results = Dict{Tuple{String,String},TimingResult}()
+for T in (Float64, Float32), (backend_name, adtype) in _AD_BACKENDS
+    T == Float32 && continue  # MvNormal(zeros(K), I) is Float64-only in this Turing model; skip rather than force a mismatch
+    r = bench_turing_manyparam_gradient(200, 2000, backend_name, adtype)
+    println(r.label, ": median=", r.median_s, "s  first_call=", r.first_call_s, "s")
+    manyparam_results[("$T", backend_name)] = r
+end
+
+poisson_results = Dict{Int,TimingResult}()
+for n in (2000, 50_000)
+    r = bench_turing_poisson_density(5, n)
+    println(r.label, ": median=", r.median_s, "s  first_call=", r.first_call_s, "s")
+    poisson_results[n] = r
 end
 
 # ===========================================================================
@@ -170,6 +334,7 @@ end
 # heard of Turing.
 # ===========================================================================
 out_path = joinpath(@__DIR__, "..", "turing_reference.jl")
+_fmt_result(r) = "(first_call_s=$(r.first_call_s), min_s=$(r.min_s), median_s=$(r.median_s), mean_s=$(r.mean_s), std_s=$(r.std_s))"
 open(out_path, "w") do io
     println(io, "# AUTO-GENERATED by test/comparison_env/generate_turing_reference.jl")
     println(io, "# Regenerate only if the reference models themselves change (see that")
@@ -180,16 +345,36 @@ open(out_path, "w") do io
     println(io, "# DynamicPPL's getlogjoint promotes internally back to Float64 regardless")
     println(io, "# (confirmed directly) — this is NOT an apples-to-apples Float32-compute")
     println(io, "# comparison on Turing's side; that gap is itself part of what's measured.")
+    println(io, "#")
+    println(io, "# AD backends benchmarked here: ", join(first.(_AD_BACKENDS), ", "), " (whichever were")
+    println(io, "# installed + `import`ed when this was generated — see the script for how")
+    println(io, "# backends are registered).")
     println(io)
     println(io, "const TURING_REFERENCE = (")
     println(io, "    accuracy = (mu_mean = ", turing_mu_mean, ", mu_std = ", turing_mu_std, "),")
     println(io, "    speed = Dict(")
-    for ((shapename, key), r) in results
-        println(
-            io,
-            "        (\"$shapename\", \"$key\") => (first_call_s=", r.first_call_s,
-            ", min_s=", r.min_s, ", median_s=", r.median_s, ", mean_s=", r.mean_s, ", std_s=", r.std_s, "),",
-        )
+    for ((shapename, key), r) in speed_results
+        println(io, "        (\"$shapename\", \"$key\") => ", _fmt_result(r), ",")
+    end
+    println(io, "    ),")
+    println(io, "    gradient = Dict(")
+    for ((shapename, Tname, backend_name), r) in gradient_results
+        println(io, "        (\"$shapename\", \"$Tname\", \"$backend_name\") => ", _fmt_result(r), ",")
+    end
+    println(io, "    ),")
+    println(io, "    nuts = Dict(")
+    for ((shapename, Tname), r) in nuts_results
+        println(io, "        (\"$shapename\", \"$Tname\") => ", _fmt_result(r), ",")
+    end
+    println(io, "    ),")
+    println(io, "    manyparam = Dict(")
+    for ((Tname, backend_name), r) in manyparam_results
+        println(io, "        (\"$Tname\", \"$backend_name\") => ", _fmt_result(r), ",")
+    end
+    println(io, "    ),")
+    println(io, "    poisson = Dict(")
+    for (n, r) in poisson_results
+        println(io, "        $n => ", _fmt_result(r), ",")
     end
     println(io, "    ),")
     println(io, ")")

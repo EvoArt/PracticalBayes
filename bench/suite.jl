@@ -36,9 +36,10 @@
 # whether overhead is a fixed cost or scales with the problem.
 
 using PracticalBayes
-using Distributions: Normal, Exponential, logpdf
+using Distributions: Normal, Exponential, Poisson, logpdf
 using Random
 using Statistics: mean, median, std
+using LinearAlgebra: dot
 using ADTypes
 import LogDensityProblems
 import AbstractMCMC
@@ -118,6 +119,53 @@ function make_data(::Type{T}, n, seed) where {T<:Real}
     return T.(randn(rng, n))
 end
 
+# "manyparam": K=200 regression coefficients, N=2000 observations — the
+# shape where reverse-mode AD (Mooncake/ReverseDiff/Enzyme) SHOULD start
+# beating forward-mode (ForwardDiff), since forward-mode's cost scales
+# roughly linearly with the number of DIFFERENTIATED parameters (K+1 here)
+# while reverse-mode's is closer to O(1) in parameter count (a small
+# constant times the cost of one forward pass, regardless of K). The tiny/
+# large shapes above both have exactly 2 parameters and can never surface
+# this crossover — that was a real gap in the original benchmark design.
+@model function manyparam_model(X, y)
+    beta = Vector{paramtype(__mode__)}(undef, size(X, 2))
+    for k in 1:size(X, 2)
+        beta[k] ~ Normal(0, 1)
+    end
+    sigma ~ Exponential(1)
+    y .~ Normal.(X * beta, sigma)
+end
+
+function make_manyparam_data(::Type{T}, k, n, seed) where {T<:Real}
+    rng = Random.Xoshiro(seed)
+    X = T.(randn(rng, n, k))
+    true_beta = randn(rng, k)
+    y = T.(X * true_beta .+ randn(rng, n) .* 0.5)
+    return X, y
+end
+
+# "poisson": discrete-LIKELIHOOD regression (observations are draws from a
+# discrete distribution — Poisson counts — not a discrete LATENT variable;
+# fully supported by ordinary `~`/`.~`, no marginalization needed). Added
+# because every shape so far used a continuous Normal likelihood; this
+# checks the hot path is equally allocation-free/fast when `logpdf` is a
+# discrete pmf instead of a continuous density.
+@model function poisson_model(X, y)
+    beta = Vector{paramtype(__mode__)}(undef, size(X, 2))
+    for k in 1:size(X, 2)
+        beta[k] ~ Normal(0, 1)
+    end
+    y .~ Poisson.(exp.(X * beta))
+end
+
+function make_poisson_data(k, n, seed)
+    rng = Random.Xoshiro(seed)
+    X = randn(rng, n, k)
+    true_beta = randn(rng, k) .* 0.3
+    y = [rand(rng, Poisson(exp(clamp(dot(X[i, :], true_beta), -10, 10)))) for i in 1:n]
+    return X, Float64.(y)
+end
+
 # ===========================================================================
 # Layer 1: logdensity only (no AD) — pure model-evaluation overhead vs a
 # hand-written loop computing the identical quantity with no framework at all.
@@ -157,6 +205,52 @@ function bench_gradient(::Type{T}, n; reps=50) where {T<:Real}
         push!(results, r)
     end
     return results
+end
+
+# Same idea as `bench_gradient` above, but on the K=200-parameter regression
+# — this is the shape that should actually distinguish forward- from
+# reverse-mode AD, unlike the 2-parameter tiny/large models.
+#
+# Each backend is wrapped in a try/catch: a single backend failing on a
+# given (model, precision) combination (e.g. Enzyme's Union-type analysis
+# tripping on Float32 for this model — a real limitation observed in
+# practice, not something worth chasing down before reporting the other
+# backends) must not abort the whole benchmark run. Failures are reported
+# as `nothing` in the results and printed, not silently dropped.
+function bench_manyparam_gradient(::Type{T}, k, n; reps=20) where {T<:Real}
+    X, y = make_manyparam_data(T, k, n, 5)
+    m = manyparam_model(X, y)
+    layout, θ0, store0 = build_layout(m; T=T)
+
+    results = Pair{String,Union{TimingResult,Nothing}}[]
+    for (name, adtype) in _AD_BACKENDS
+        label = "$name gradient (manyparam K=$k, T=$T, n=$n)"
+        try
+            ldf = LogDensityFunction(m, layout, store0, adtype; θ0=θ0)
+            r = time_reps(() -> LogDensityProblems.logdensity_and_gradient(ldf, θ0), label; reps=reps)
+            push!(results, name => r)
+        catch e
+            println(label, ": FAILED — ", sprint(showerror, e)[1:min(end, 200)])
+            push!(results, name => nothing)
+        end
+    end
+    return results
+end
+
+# Discrete-likelihood (Poisson) density-only comparison against a raw loop,
+# same shape as `bench_logdensity_only` but with a non-Gaussian observation
+# distribution.
+function bench_poisson_density(k, n; reps=50)
+    X, y = make_poisson_data(k, n, 6)
+    m = poisson_model(X, y)
+    layout, θ0, store0 = build_layout(m)
+    ldf = LogDensityFunction(m, layout, store0)
+
+    raw(beta) = sum(logpdf.(Poisson.(exp.(X * beta)), y))
+    beta0 = zeros(k)
+    r_raw = time_reps(() -> raw(beta0), "raw Poisson loop (k=$k, n=$n)"; reps=reps)
+    r_pb = time_reps(() -> LogDensityProblems.logdensity(ldf, θ0), "PracticalBayes Poisson density (k=$k, n=$n)"; reps=reps)
+    return r_raw, r_pb
 end
 
 # ===========================================================================
@@ -257,6 +351,28 @@ function run_suite()
     for n in (20, 50_000)
         println(bench_nuts(Float64, n))
         println(bench_nuts(Float32, n))
+    end
+
+    println()
+    println("="^100)
+    println("Layer 2b: MANY-PARAMETER model (K=200, N=2000) — where reverse-mode")
+    println("  AD should start beating forward-mode, unlike the 2-parameter shapes above.")
+    println("="^100)
+    for T in (Float64, Float32)
+        for (_, r) in bench_manyparam_gradient(T, 200, 2000)
+            r === nothing || println(r)
+        end
+    end
+
+    println()
+    println("="^100)
+    println("Layer 1b: DISCRETE-LIKELIHOOD model (Poisson regression, k=5, n=2000/50000)")
+    println("="^100)
+    for n in (2000, 50_000)
+        r_raw, r_pb = bench_poisson_density(5, n)
+        println(r_raw)
+        println(r_pb)
+        println("  -> PracticalBayes / raw ratio (median): ", round(r_pb.median_s / r_raw.median_s; digits=3))
     end
 end
 

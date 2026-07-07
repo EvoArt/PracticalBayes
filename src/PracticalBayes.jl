@@ -25,7 +25,7 @@ export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction
 export AbstractEvalMode, TraceMode, EvalMode, PriorMode, FixedMode
-export evaluate
+export evaluate, paramtype
 export maximum_a_posteriori, maximum_likelihood, laplace_approximation
 export PointEstimate, LaplaceApproximation, laplace_mvnormal
 

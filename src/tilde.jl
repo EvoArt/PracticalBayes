@@ -145,23 +145,31 @@ Handles `x[i] ~ dist` sites. `container` is the pre-declared array bound to
 `x`; the element at linear index `i` is written (assume) or read (observe)
 and the corresponding sub-range of `θ` is selected via `elem_range`.
 
-KNOWN LIMITATION: `container` (`x`) is whatever the user's own model-body
-line (typically `x = Vector{Float64}(undef, n)`) produced — that line reruns
-on every single `EvalMode` evaluation (every NUTS leapfrog step), so it
-reallocates the container fresh each time. This is plain user code, not
-something the compiler or this function controls, and it's the one place in
-the hot path that isn't allocation-free: for `n` on the order of thousands,
-expect on the order of `n * sizeof(eltype)` bytes/call. Measured: ~8KB/call
-for a 1000-element `Float64` indexed family. Caching/reusing this buffer
+REQUIRED: `container` (`x`) MUST be declared as `Vector{paramtype(__mode__)}(undef, n)`
+(see `paramtype`, modes.jl), NOT `Vector{Float64}(undef, n)`. `paramtype`
+tracks whatever number type the CURRENT evaluation actually needs — plain
+`Float64`/`Float32` for a density-only call, but a `ForwardDiff.Dual` (or
+other AD-backend-specific number type) mid-gradient. Declaring the container
+as hardcoded `Float64` crashes under every AD backend (`MethodError`/
+`InexactError` trying to store a `Dual` into a `Float64` array) — this is
+exactly the fix DynamicPPL's own `@model` applies internally, via a
+`::Type{T}=Float64` model argument it rewrites per call; `paramtype` is the
+simpler equivalent our compiler can offer directly, reading the type off the
+mode rather than rewriting model arguments at construction time.
+
+KNOWN LIMITATION (allocation, not correctness): `container`'s declaration
+line reruns on every single `EvalMode` evaluation (every NUTS leapfrog
+step), so it reallocates fresh each time — for `n` on the order of
+thousands, expect on the order of `n * sizeof(eltype)` bytes/call (~8KB/call
+measured for a 1000-element `Float64` family). Caching/reusing this buffer
 was considered and deliberately NOT implemented: it would only help the
-no-gradient (order-0) evaluation path, since AD backends need a fresh
-Dual-typed (or backend-specific) buffer per call regardless — and NUTS
-always requests gradients, so a cached buffer wouldn't help the actual
-sampling hot path, while adding real complexity (thread-safety for
-`MCMCThreads`, cache invalidation). If this allocation matters for your
-model, prefer an array distribution via plain `~` (`product_distribution`,
-`MvNormal`) over an indexed `x[i] ~ dist` loop — those don't need a
-pre-declared container at all.
+no-gradient (order-0) path, since AD backends need a fresh
+Dual-typed/backend-specific buffer per call regardless, and NUTS always
+requests gradients — a cached buffer wouldn't touch the actual sampling hot
+path, while adding real complexity (thread-safety for `MCMCThreads`, cache
+invalidation). If this allocation matters for your model, prefer an array
+distribution via plain `~` (`product_distribution`, `MvNormal`) over an
+indexed `x[i] ~ dist` loop — those don't need a pre-declared container at all.
 """
 @inline function tilde_index(m::EvalMode, ::Val{s}, container, idx::Tuple, dist, acc::Accum) where {s}
     # `idx` is whatever the user wrote inside `x[...]`, e.g. `(i,)` for a
