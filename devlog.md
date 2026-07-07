@@ -7,7 +7,73 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
-## 2026-07-07 (latest) — first PosteriorDB/tutorial model ports, real kwarg-model bug found + fixed
+## 2026-07-07 (latest) — model corpus complete for now: 46 PosteriorDB models + 7 tutorials
+
+Continued the model-porting pass across four more batches (`models_batch2.jl`
+through `models_batch5.jl` in `bench/corpus/posteriordb/`, plus
+`models_batch2.jl` in `bench/corpus/tutorials/`), stopping deliberately at
+the boundary where remaining models need genuinely new capability rather
+than more porting effort (user confirmed: stop here rather than start
+mixtures/HMM/GP/NN/ODE).
+
+**Batches 2-5 (37 more PosteriorDB models, 46 total)**: covered
+posterior-predictive `:=` quantities that call `rand()` (Rate_4/5 — tested
+density-only, since `Distributions.rand(::Binomial, ::Dual)` genuinely has
+no sampler; sampling isn't a differentiable operation, a Distributions.jl
+property, not a PracticalBayes limitation), gather-indexed random effects
+(GLMM1's `[year,site]` lookup, election88_full's five simultaneous
+group-indexed effects, pilots/rats/radon family's county/group/scenario
+indexing), `UniformScaling` as an `MvNormal` covariance, `filldist` over
+non-Flat base distributions (`filldist(Normal(mu,sigma), N)`) and over
+`Truncated` distributions, `LocationScale`-wrapped `TDist` priors
+(`scale*TDist(nu)`, Distributions.jl builtin sugar) for a regularized-
+horseshoe logistic regression, and a 2D `filldist` (`filldist(Normal(), D,
+k)`) for probabilistic PCA. Two upstream PosteriorDB source bugs found and
+worked around (documented in `models_batch5.jl`'s header): two radon
+variants write `Normal(fill(...), ...)`/`Normal(mu,sigma)` then index the
+result (only sensible for `MvNormal`, clearly a typo in the original Stan
+port); a third references an array that's never actually defined anywhere
+in the model body and was skipped entirely, not "ported around."
+
+**Porting idiom, reconfirmed multiple times, not a bug**: several tutorial/
+PosteriorDB models write `y[i] ~ dist_i` inside a loop over already-observed
+data (logistic/poisson/multinomial-logistic-regression tutorials; irt_2pl,
+GLMM1 from PosteriorDB). `x[i] ~ dist` is assume-only by design (always
+draws into a pre-declared container) — every one of these ports to a
+vectorized `.~` instead, including over 2D matrices and arrays of DISTINCT
+per-element distributions (`Categorical.(vs)`, matrix-shaped
+`BernoulliLogit` arrays) — `tilde_dot`'s `sum(logpdf.(dist_bcast, y))`
+fallback handles all of these with no special-casing needed.
+
+**Real porting mistake caught by actually running the model** (not a
+package bug): the first `probabilistic-pca` port dropped the original
+tutorial's `genes_mean'` transpose, silently producing an incompatible
+matrix orientation — caught immediately via `DimensionMismatch` on the
+first `build_layout` call, fixed by matching the source's `N×D`/`D×N`
+convention exactly. Worth noting as a methodology point: every port in this
+corpus was actually RUN (logdensity + gradient-vs-finite-differences), not
+just visually reviewed — this is exactly the kind of silent error that
+review alone would miss.
+
+**Stopped here, not "done"**: `bench/corpus/posteriordb/` now covers 46 of
+~74 models; remaining are capture-recapture (M0/Mb/Mh/Mt/Mtbh/Mth +
+multi_occupancy — need hand-coded discrete-latent marginalization),
+mixture models (need `MixtureModel`/discrete-latent sampling), HMMs (need
+either raw discrete-latent sampling or an external HMM package), a couple
+of upstream-broken/stubbed files (diamonds, hier_2pl, soil_incubation — the
+last needs `DifferentialEquations.jl` and is empty-bodied upstream anyway).
+`bench/corpus/tutorials/` covers 7 of 15; remaining need `AbstractGPs.jl`
+(2 GP tutorials), an NN library (bayesian-neural-networks), an ODE solver
+(bayesian-differential-equations), or discrete-latent sampling (2 mixture
+tutorials, hidden-markov-models) — genuinely new architecture/dependencies,
+not more of the same porting pattern. HMM specifically is blocked on real
+missing architecture: the design plan's own M3 milestone (Gibbs +
+`AbstractLatentKernel` + FFBS-style kernels) was never built this
+session — `build_layout` today hard-errors on any discrete/latent site with
+no value-block assignment, by design, precisely because there's no Gibbs
+mechanism yet to hand it to.
+
+## 2026-07-07 — first PosteriorDB/tutorial model ports, real kwarg-model bug found + fixed
 
 Picked back up the deferred model-corpus work now that Turing-side parity
 and the benchmark history/report mechanism are done. Per the earlier plan:
