@@ -20,6 +20,8 @@ using Dates: now
 const HERE = @__DIR__
 const PB_HISTORY = joinpath(HERE, "results", "history.jsonl")
 const TURING_HISTORY = joinpath(HERE, "results", "history_turing.jsonl")
+const PB_CORPUS_HISTORY = joinpath(HERE, "results", "history_corpus.jsonl")
+const TURING_CORPUS_HISTORY = joinpath(HERE, "results", "history_corpus_turing.jsonl")
 const OUT_QMD = joinpath(HERE, "report.qmd")
 
 # ===========================================================================
@@ -194,15 +196,83 @@ else
         end
     end
 
-    println(io, "## Reproducing")
-    println(io)
-    println(io, "```")
-    println(io, "julia --project=. bench/suite.jl                                    # PracticalBayes side, appends to bench/results/history.jsonl")
-    println(io, "julia --project=test/comparison_env test/comparison_env/generate_turing_reference.jl  # Turing side, appends to bench/results/history_turing.jsonl")
-    println(io, "julia --project=. bench/generate_report.jl                          # regenerate this file")
-    println(io, "quarto render bench/report.qmd                                      # render to HTML")
-    println(io, "```")
 end
+
+# ===========================================================================
+# Section: model corpus (bench/corpus/{posteriordb,tutorials}/) — every
+# ported model, every AD backend, both precisions, three layers. Keyed by
+# (corpus, model, layer, precision, backend) — no "shape" field here (each
+# corpus model has exactly one data-generation function, unlike bench/suite.jl's
+# hand-picked tiny/large shapes).
+# ===========================================================================
+
+pb_corpus = load_jsonl(PB_CORPUS_HISTORY)
+turing_corpus = load_jsonl(TURING_CORPUS_HISTORY)
+
+corpus_key(r) = (r["corpus"], r["model"], r["layer"], r["precision"], r["backend"])
+function latest_by_corpus_key(records)
+    out = Dict{Tuple,Dict{String,Any}}()
+    for r in records
+        out[corpus_key(r)] = r  # last write wins == latest run, same as latest_by_key
+    end
+    return out
+end
+
+if !isempty(pb_corpus)
+    pb_corpus_latest = latest_by_corpus_key(pb_corpus)
+    turing_corpus_latest = latest_by_corpus_key(turing_corpus)
+
+    println(io, "## Model corpus benchmarks")
+    println(io)
+    latest_pb_corpus_run = pb_corpus[end]
+    println(io, "Latest PracticalBayes corpus run: **", latest_pb_corpus_run["timestamp"], "**, commit `", _fmt_commit(latest_pb_corpus_run["commit"]), "`, ", length(unique(r["model"] for r in pb_corpus)), " distinct models.")
+    if !isempty(turing_corpus)
+        latest_turing_corpus_run = turing_corpus[end]
+        println(io, "  ")
+        println(io, "Latest Turing corpus run (representative subset): **", latest_turing_corpus_run["timestamp"], "**, commit `", _fmt_commit(latest_turing_corpus_run["commit"]), "`, ", length(unique(r["model"] for r in turing_corpus)), " distinct models.")
+    end
+    println(io)
+    println(io, "Every model in `bench/corpus/posteriordb/` and `bench/corpus/tutorials/` (see `bench/corpus_bench.jl`), across every AD backend available in the benchmarking environment, Float64 and Float32, on three layers (logdensity, gradient, a short NUTS run). Turing only covers a representative subset (~20 models spanning each structural family — porting all ~53 to Turing as well was judged not worth the effort vs. the coverage gained). Enzyme is excluded from this sweep: across this many structurally varied models it produced an uncatchable crash that killed a full benchmark run outright (see `bench/corpus_bench.jl`'s comment) — it remains in `bench/suite.jl`'s smaller hand-picked sweep, where it's known to behave.")
+    println(io)
+
+    for layer in ("logdensity", "gradient", "nuts")
+        println(io, "### Corpus layer: `", layer, "`")
+        println(io)
+        println(io, "| Corpus | Model | Precision | Backend | PB median | Turing median | PB/Turing |")
+        println(io, "|---|---|---|---|---:|---:|---:|")
+        ks = sort(collect(k for k in keys(pb_corpus_latest) if k[3] == layer))
+        for k in ks
+            pb_r = pb_corpus_latest[k]
+            t_r = get(turing_corpus_latest, k, nothing)
+            corpus, model, _, precision, backend = k
+            pb_med = _fmt_s(pb_r["median_s"])
+            if t_r === nothing
+                t_med, ratio = "—", "—"
+            else
+                t_med = _fmt_s(t_r["median_s"])
+                ratio = pb_r["median_s"] > 0 && t_r["median_s"] > 0 ? string(round(pb_r["median_s"] / t_r["median_s"]; digits=2), "×") : "—"
+            end
+            println(io, "| ", corpus, " | ", model, " | ", precision, " | ", backend, " | ", pb_med, " | ", t_med, " | ", ratio, " |")
+        end
+        println(io)
+    end
+else
+    println(io, "## Model corpus benchmarks")
+    println(io)
+    println(io, "No corpus benchmark history found. Run `julia --project=<env-with-AD-backends> bench/corpus_bench.jl` (see that file's header for the `bench/bench_env` environment used to get every AD backend) to populate `bench/results/history_corpus.jsonl`.")
+    println(io)
+end
+
+println(io, "## Reproducing")
+println(io)
+println(io, "```")
+println(io, "julia --project=. bench/suite.jl                                    # PracticalBayes side, appends to bench/results/history.jsonl")
+println(io, "julia --project=test/comparison_env test/comparison_env/generate_turing_reference.jl  # Turing side, appends to bench/results/history_turing.jsonl")
+println(io, "julia --project=bench/bench_env bench/corpus_bench.jl               # PracticalBayes corpus, appends to bench/results/history_corpus.jsonl")
+println(io, "julia --project=test/comparison_env test/comparison_env/corpus_bench_turing.jl  # Turing corpus subset, appends to bench/results/history_corpus_turing.jsonl")
+println(io, "julia --project=. bench/generate_report.jl                          # regenerate this file")
+println(io, "quarto render bench/report.qmd                                      # render to HTML")
+println(io, "```")
 
 write(OUT_QMD, take!(io))
 println("Wrote report to: ", OUT_QMD)
