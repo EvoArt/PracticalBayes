@@ -1,3 +1,12 @@
+# PracticalBayes.jl devlog
+
+Running log of design decisions, motivations, and compromises. Newest entries
+at the top. See also the approved design plan at
+`C:\Users\arn203\.claude\plans\i-want-to-make-squishy-pike.md` for the full
+architecture writeup this log elaborates on.
+
+See "later considerations.md" for some vague future wish list.
+
 ## 2026-07-07 (latest) — NUTS methodology fix, Enzyme re-enabled with subprocess isolation, report/heatmap redesign
 
 Follow-up to the corpus-wide benchmark entry below, triggered by the user
@@ -252,16 +261,8 @@ slightly slower, suggesting implicit Float64 promotion in the hot path.
 **Tests added:**
 - Float32 density type tests (scalar, positive-constrained, array family)
 - Float32 AD gradient type tests
-# PracticalBayes.jl devlog
 
-Running log of design decisions, motivations, and compromises. Newest entries
-at the top. See also the approved design plan at
-`C:\Users\arn203\.claude\plans\i-want-to-make-squishy-pike.md` for the full
-architecture writeup this log elaborates on.
-
-See "later considerations.md" for some vague future wish list.
-
-## 2026-07-07 (latest) — note: complex models (mixtures/HMM/capture-recapture/GP/NN/ODE) are targeted next, soon
+## 2026-07-07 — note: complex models (mixtures/HMM/capture-recapture/GP/NN/ODE) are targeted next, soon
 
 Explicit forward-looking note per user request, so this doesn't get lost:
 the model families deferred at the end of the corpus-porting pass below
