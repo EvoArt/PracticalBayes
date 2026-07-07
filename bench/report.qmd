@@ -18,45 +18,36 @@ Timings report **first-call** (includes JIT compilation) separately from **stead
 
 ### Layer: `logdensity`
 
-| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |
-|---|---|---|---|---:|---:|---:|---:|---:|
-| normal | large | Float32 | none | 784.9 µs | 1.088 ms | 766.8 µs | 726.5 µs | 1.5× |
-| normal | large | Float64 | none | 1.289 ms | 1.229 ms | 824.6 µs | 689.6 µs | 1.78× |
-| normal | tiny | Float32 | none | 3.1 µs | 0.65 µs | 3.8 µs | 0.4 µs | 1.62× |
-| normal | tiny | Float64 | none | 2.8 µs | 0.6 µs | 4.8 µs | 0.5 µs | 1.2× |
-| poisson | k5_n2000 | Float64 | none | 357.5 µs | 189.05 µs | 155.7 µs | 159.95 µs | 1.18× |
-| poisson | k5_n50000 | Float64 | none | 5.526 ms | 5.398 ms | 4.123 ms | 4.19 ms | 1.29× |
+| Model | Shape | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| normal | large | none | 1.229 ms | 1.088 ms | 689.6 µs | 0.89× | 1.78× | 1.58× |
+| normal | tiny | none | 0.6 µs | 0.65 µs | 0.5 µs | 1.08× | 1.2× | 1.3× |
+| poisson | k5_n2000 | none | 189.05 µs | — | 159.95 µs | — | 1.18× | — |
+| poisson | k5_n50000 | none | 5.398 ms | — | 4.19 ms | — | 1.29× | — |
 
 ### Layer: `logdensity_raw`
 
-| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |
-|---|---|---|---|---:|---:|---:|---:|---:|
-| normal | large | Float32 | none | 1.138 ms | 1.413 ms | — | — | — |
-| normal | large | Float64 | none | 1.564 ms | 1.453 ms | — | — | — |
-| normal | tiny | Float32 | none | 2.3 µs | 0.7 µs | — | — | — |
-| normal | tiny | Float64 | none | 4.2 µs | 0.6 µs | — | — | — |
-| poisson | k5_n2000 | Float64 | none | 224.8 µs | 202.2 µs | — | — | — |
-| poisson | k5_n50000 | Float64 | none | 4.102 ms | 4.712 ms | — | — | — |
+| Model | Shape | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| normal | large | none | 1.453 ms | 1.413 ms | — | 0.97× | — | — |
+| normal | tiny | none | 0.6 µs | 0.7 µs | — | 1.17× | — | — |
+| poisson | k5_n2000 | none | 202.2 µs | — | — | — | — | — |
+| poisson | k5_n50000 | none | 4.712 ms | — | — | — | — | — |
 
 ### Layer: `gradient`
 
-| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |
-|---|---|---|---|---:|---:|---:|---:|---:|
-| manyparam | K200_N2000 | Float32 | ForwardDiff | 31.078 ms | 32.983 ms | — | — | — |
-| manyparam | K200_N2000 | Float64 | ForwardDiff | 53.917 ms | 51.433 ms | 33.342 ms | 26.815 ms | 1.92× |
-| normal | large | Float32 | ForwardDiff | 1.052 ms | 1.978 ms | 599.7 µs | 765.5 µs | 2.58× |
-| normal | large | Float64 | ForwardDiff | 1.971 ms | 1.803 ms | 905.8 µs | 657.4 µs | 2.74× |
-| normal | tiny | Float32 | ForwardDiff | 22.9 µs | 1.3 µs | 5.7 µs | 0.45 µs | 2.89× |
-| normal | tiny | Float64 | ForwardDiff | 14.1 µs | 1.4 µs | 20.4 µs | 0.5 µs | 2.8× |
+| Model | Shape | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| manyparam | K200_N2000 | ForwardDiff | 51.433 ms | 32.983 ms | 26.815 ms | 0.64× | 1.92× | 1.23× |
+| normal | large | ForwardDiff | 1.803 ms | 1.978 ms | 657.4 µs | 1.1× | 2.74× | 3.01× |
+| normal | tiny | ForwardDiff | 1.4 µs | 1.3 µs | 0.5 µs | 0.93× | 2.8× | 2.6× |
 
 ### Layer: `nuts`
 
-| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |
-|---|---|---|---|---:|---:|---:|---:|---:|
-| normal | large | Float32 | ForwardDiff | 6095.173 ms | 2319.065 ms | 2828.373 ms | 2006.191 ms | 1.16× |
-| normal | large | Float64 | ForwardDiff | 6472.94 ms | 2207.828 ms | 1747.468 ms | 1914.286 ms | 1.15× |
-| normal | tiny | Float32 | ForwardDiff | 8193.635 ms | 6.649 ms | 2543.031 ms | 11.113 ms | 0.6× |
-| normal | tiny | Float64 | ForwardDiff | 8545.689 ms | 6.795 ms | 2755.692 ms | 11.202 ms | 0.61× |
+| Model | Shape | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| normal | large | ForwardDiff | 2207.828 ms | 2319.065 ms | 1914.286 ms | 1.05× | 1.15× | 1.21× |
+| normal | tiny | ForwardDiff | 6.795 ms | 6.649 ms | 11.202 ms | 0.98× | 0.61× | 0.59× |
 
 ## History (regression tracking)
 
@@ -218,516 +209,306 @@ Series with more than one recorded run (steady-state median, PracticalBayes side
 
 ## Model corpus benchmarks
 
-Latest PracticalBayes corpus run: **2026-07-07T22:13:34.606**, commit `00827ea2`, 55 distinct models.
+Latest PracticalBayes corpus run: **2026-07-07T23:34:24.475**, commit `f4c1bd14`, 55 distinct models.
   
 Latest Turing corpus run (representative subset): **2026-07-07T22:38:01.260**, commit `00827ea2`, 20 distinct models.
 
-Every model in `bench/corpus/posteriordb/` and `bench/corpus/tutorials/` (see `bench/corpus_bench.jl`), across every AD backend available in the benchmarking environment, Float64 and Float32, on three layers (logdensity, gradient, a short NUTS run). Turing only covers a representative subset (~20 models spanning each structural family — porting all ~53 to Turing as well was judged not worth the effort vs. the coverage gained). Enzyme is excluded from this sweep: across this many structurally varied models it produced an uncatchable crash that killed a full benchmark run outright (see `bench/corpus_bench.jl`'s comment) — it remains in `bench/suite.jl`'s smaller hand-picked sweep, where it's known to behave.
+Every model in `bench/corpus/posteriordb/` and `bench/corpus/tutorials/` (see `bench/corpus_bench.jl`), across ForwardDiff/Mooncake/Enzyme (ReverseDiff dropped — redundant with Mooncake), Float64 and Float32, on three layers (logdensity, gradient, a 1000-sample NUTS run). Turing only covers a representative subset (~20 models spanning each structural family — porting all ~55 to Turing as well was judged not worth the effort vs. the coverage gained). Each model runs in its own subprocess (`bench/corpus_bench_worker.jl`), so one model crashing (Enzyme has genuinely done this on certain type combinations) only loses that model's results, not the whole sweep.
 
 ### Corpus layer: `logdensity`
 
-| Corpus | Model | Precision | Backend | PB median | Turing median | PB/Turing |
-|---|---|---|---|---:|---:|---:|
-| posteriordb | GLM_Poisson | Float32 | none | 1.4 µs | — | — |
-| posteriordb | GLM_Poisson | Float64 | none | 1.2 µs | 1.4 µs | 0.86× |
-| posteriordb | Rate_1 | Float32 | none | 0.25 µs | — | — |
-| posteriordb | Rate_1 | Float64 | none | 0.4 µs | 0.55 µs | 0.73× |
-| posteriordb | blr | Float32 | none | 0.9 µs | — | — |
-| posteriordb | blr | Float64 | none | 0.6 µs | 0.7 µs | 0.86× |
-| posteriordb | dugongs | Float32 | none | 0.65 µs | — | — |
-| posteriordb | dugongs | Float64 | none | 0.65 µs | 0.9 µs | 0.72× |
-| posteriordb | earn_height | Float32 | none | 2.55 µs | — | — |
-| posteriordb | earn_height | Float64 | none | 2.3 µs | — | — |
-| posteriordb | eight_schools_centered | Float32 | none | 0.6 µs | — | — |
-| posteriordb | eight_schools_centered | Float64 | none | 0.6 µs | 1.35 µs | 0.44× |
-| posteriordb | eight_schools_noncentered | Float32 | none | 0.5 µs | — | — |
-| posteriordb | eight_schools_noncentered | Float64 | none | 1.1 µs | — | — |
-| posteriordb | kidscore_interaction | Float32 | none | 3.75 µs | — | — |
-| posteriordb | kidscore_interaction | Float64 | none | 2.7 µs | 1.1 µs | 2.45× |
-| posteriordb | log10earn_height | Float32 | none | 2.55 µs | — | — |
-| posteriordb | log10earn_height | Float64 | none | 2.3 µs | — | — |
-| posteriordb | logearn_height_male | Float32 | none | 2.6 µs | — | — |
-| posteriordb | logearn_height_male | Float64 | none | 2.55 µs | — | — |
-| posteriordb | logearn_interaction | Float32 | none | 5.0 µs | — | — |
-| posteriordb | logearn_interaction | Float64 | none | 2.6 µs | — | — |
-| posteriordb | logearn_interaction_z | Float32 | none | 2.85 µs | — | — |
-| posteriordb | logearn_interaction_z | Float64 | none | 2.65 µs | — | — |
-| posteriordb | logearn_logheight_male | Float32 | none | 3.25 µs | — | — |
-| posteriordb | logearn_logheight_male | Float64 | none | 2.9 µs | — | — |
-| posteriordb | logistic_regression_rhs | Float32 | none | 5.9 µs | — | — |
-| posteriordb | logistic_regression_rhs | Float64 | none | 5.75 µs | 5.85 µs | 0.98× |
-| posteriordb | logmesquite | Float32 | none | 5.95 µs | — | — |
-| posteriordb | logmesquite | Float64 | none | 4.95 µs | — | — |
-| posteriordb | logmesquite_logva | Float32 | none | 3.6 µs | — | — |
-| posteriordb | logmesquite_logva | Float64 | none | 3.45 µs | — | — |
-| posteriordb | logmesquite_logvas | Float32 | none | 6.2 µs | — | — |
-| posteriordb | logmesquite_logvas | Float64 | none | 5.1 µs | — | — |
-| posteriordb | logmesquite_logvash | Float32 | none | 4.65 µs | — | — |
-| posteriordb | logmesquite_logvash | Float64 | none | 4.75 µs | — | — |
-| posteriordb | logmesquite_logvolume | Float32 | none | 2.9 µs | — | — |
-| posteriordb | logmesquite_logvolume | Float64 | none | 2.75 µs | — | — |
-| posteriordb | mesquite | Float32 | none | 2.85 µs | — | — |
-| posteriordb | mesquite | Float64 | none | 3.75 µs | — | — |
-| posteriordb | nes | Float32 | none | 4.35 µs | — | — |
-| posteriordb | nes | Float64 | none | 3.9 µs | — | — |
-| posteriordb | pilots | Float32 | none | 1.0 µs | — | — |
-| posteriordb | pilots | Float64 | none | 0.95 µs | 1.4 µs | 0.68× |
-| posteriordb | radon_county | Float32 | none | 0.7 µs | — | — |
-| posteriordb | radon_county | Float64 | none | 0.6 µs | — | — |
-| posteriordb | radon_county_intercept | Float32 | none | 0.55 µs | — | — |
-| posteriordb | radon_county_intercept | Float64 | none | 0.6 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float32 | none | 0.95 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float64 | none | 1.0 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float32 | none | 1.0 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float64 | none | 1.15 µs | — | — |
-| posteriordb | radon_partially_pooled_centered | Float32 | none | 0.75 µs | — | — |
-| posteriordb | radon_partially_pooled_centered | Float64 | none | 1.15 µs | — | — |
-| posteriordb | radon_pooled | Float32 | none | 0.45 µs | — | — |
-| posteriordb | radon_pooled | Float64 | none | 0.7 µs | — | — |
-| posteriordb | radon_variable_intercept_centered | Float32 | none | 0.85 µs | — | — |
-| posteriordb | radon_variable_intercept_centered | Float64 | none | 1.0 µs | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float32 | none | 1.1 µs | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float64 | none | 0.9 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_centered | Float32 | none | 1.05 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_centered | Float64 | none | 1.35 µs | 1.7 µs | 0.79× |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float32 | none | 1.2 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float64 | none | 1.2 µs | — | — |
-| posteriordb | radon_variable_slope_centered | Float32 | none | 0.85 µs | — | — |
-| posteriordb | radon_variable_slope_centered | Float64 | none | 0.95 µs | — | — |
-| posteriordb | rats | Float32 | none | 1.0 µs | — | — |
-| posteriordb | rats | Float64 | none | 1.45 µs | 1.4 µs | 1.04× |
-| posteriordb | seeds | Float32 | none | 2.4 µs | — | — |
-| posteriordb | seeds | Float64 | none | 2.75 µs | 3.15 µs | 0.87× |
-| posteriordb | seeds_centered | Float32 | none | 3.2 µs | — | — |
-| posteriordb | seeds_centered | Float64 | none | 3.45 µs | — | — |
-| posteriordb | seeds_stanified | Float32 | none | 3.1 µs | — | — |
-| posteriordb | seeds_stanified | Float64 | none | 3.0 µs | — | — |
-| posteriordb | sesame_one_pred_a | Float32 | none | 2.9 µs | — | — |
-| posteriordb | sesame_one_pred_a | Float64 | none | 2.2 µs | — | — |
-| posteriordb | surgical_model | Float32 | none | 1.7 µs | — | — |
-| posteriordb | surgical_model | Float64 | none | 2.0 µs | — | — |
-| posteriordb | wells_daae_c | Float32 | none | 5.55 µs | — | — |
-| posteriordb | wells_daae_c | Float64 | none | 5.5 µs | — | — |
-| posteriordb | wells_dae | Float32 | none | 5.25 µs | — | — |
-| posteriordb | wells_dae | Float64 | none | 4.75 µs | 3.3 µs | 1.44× |
-| posteriordb | wells_dae_c | Float32 | none | 5.05 µs | — | — |
-| posteriordb | wells_dae_c | Float64 | none | 5.15 µs | — | — |
-| posteriordb | wells_dae_inter | Float32 | none | 5.55 µs | — | — |
-| posteriordb | wells_dae_inter | Float64 | none | 6.7 µs | — | — |
-| posteriordb | wells_dist | Float32 | none | 3.65 µs | — | — |
-| posteriordb | wells_dist | Float64 | none | 3.2 µs | — | — |
-| posteriordb | wells_dist100 | Float32 | none | 1.7 µs | — | — |
-| posteriordb | wells_dist100 | Float64 | none | 1.85 µs | — | — |
-| posteriordb | wells_dist100ars | Float32 | none | 5.9 µs | — | — |
-| posteriordb | wells_dist100ars | Float64 | none | 4.2 µs | — | — |
-| posteriordb | wells_interaction | Float32 | none | 4.75 µs | — | — |
-| posteriordb | wells_interaction | Float64 | none | 4.8 µs | — | — |
-| posteriordb | wells_interaction_c | Float32 | none | 5.2 µs | — | — |
-| posteriordb | wells_interaction_c | Float64 | none | 4.85 µs | — | — |
-| tutorials | bayesian-linear-regression | Float32 | none | 0.8 µs | — | — |
-| tutorials | bayesian-linear-regression | Float64 | none | 1.0 µs | 1.1 µs | 0.91× |
-| tutorials | bayesian-logistic-regression | Float32 | none | 1.45 µs | — | — |
-| tutorials | bayesian-logistic-regression | Float64 | none | 2.55 µs | 1.75 µs | 1.46× |
-| tutorials | bayesian-poisson-regression | Float32 | none | 2.25 µs | — | — |
-| tutorials | bayesian-poisson-regression | Float64 | none | 1.45 µs | 1.75 µs | 0.83× |
-| tutorials | bayesian-time-series-analysis | Float32 | none | 0.9 µs | — | — |
-| tutorials | bayesian-time-series-analysis | Float64 | none | 0.75 µs | — | — |
-| tutorials | coin-flipping | Float32 | none | 1.2 µs | — | — |
-| tutorials | coin-flipping | Float64 | none | 1.2 µs | 1.2 µs | 1.0× |
-| tutorials | multinomial-logistic-regression | Float32 | none | 8.8 µs | — | — |
-| tutorials | multinomial-logistic-regression | Float64 | none | 8.15 µs | 20.15 µs | 0.4× |
-| tutorials | probabilistic-pca | Float32 | none | 2.05 µs | — | — |
-| tutorials | probabilistic-pca | Float64 | none | 1.95 µs | 2.2 µs | 0.89× |
+| Corpus | Model | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| posteriordb | GLM_Poisson | none | 1.6 µs | 2.2 µs | 1.4 µs | 1.38× | 1.14× | 1.57× |
+| posteriordb | Rate_1 | none | 0.3 µs | 0.9 µs | 0.55 µs | 3.0× | 0.55× | 1.64× |
+| posteriordb | blr | none | 1.4 µs | 0.9 µs | 0.7 µs | 0.64× | 2.0× | 1.29× |
+| posteriordb | dugongs | none | 1.15 µs | 1.05 µs | 0.9 µs | 0.91× | 1.28× | 1.17× |
+| posteriordb | earn_height | none | 2.3 µs | 2.55 µs | — | 1.11× | — | — |
+| posteriordb | eight_schools_centered | none | 0.9 µs | 1.15 µs | 1.35 µs | 1.28× | 0.67× | 0.85× |
+| posteriordb | eight_schools_noncentered | none | 0.85 µs | 1.0 µs | — | 1.18× | — | — |
+| posteriordb | kidscore_interaction | none | 2.7 µs | 3.75 µs | 1.1 µs | 1.39× | 2.45× | 3.41× |
+| posteriordb | log10earn_height | none | 2.3 µs | 2.55 µs | — | 1.11× | — | — |
+| posteriordb | logearn_height_male | none | 2.55 µs | 2.6 µs | — | 1.02× | — | — |
+| posteriordb | logearn_interaction | none | 2.6 µs | 5.0 µs | — | 1.92× | — | — |
+| posteriordb | logearn_interaction_z | none | 2.65 µs | 2.85 µs | — | 1.08× | — | — |
+| posteriordb | logearn_logheight_male | none | 2.9 µs | 3.25 µs | — | 1.12× | — | — |
+| posteriordb | logistic_regression_rhs | none | 5.75 µs | 5.9 µs | 5.85 µs | 1.03× | 0.98× | 1.01× |
+| posteriordb | logmesquite | none | 4.95 µs | 5.95 µs | — | 1.2× | — | — |
+| posteriordb | logmesquite_logva | none | 3.45 µs | 3.6 µs | — | 1.04× | — | — |
+| posteriordb | logmesquite_logvas | none | 5.1 µs | 6.2 µs | — | 1.22× | — | — |
+| posteriordb | logmesquite_logvash | none | 4.75 µs | 4.65 µs | — | 0.98× | — | — |
+| posteriordb | logmesquite_logvolume | none | 2.75 µs | 2.9 µs | — | 1.05× | — | — |
+| posteriordb | mesquite | none | 3.75 µs | 2.85 µs | — | 0.76× | — | — |
+| posteriordb | nes | none | 3.9 µs | 4.35 µs | — | 1.12× | — | — |
+| posteriordb | pilots | none | 0.95 µs | 1.0 µs | 1.4 µs | 1.05× | 0.68× | 0.71× |
+| posteriordb | radon_county | none | 0.6 µs | 0.7 µs | — | 1.17× | — | — |
+| posteriordb | radon_county_intercept | none | 0.6 µs | 0.55 µs | — | 0.92× | — | — |
+| posteriordb | radon_hierarchical_intercept_centered | none | 1.0 µs | 0.95 µs | — | 0.95× | — | — |
+| posteriordb | radon_hierarchical_intercept_noncentered | none | 1.15 µs | 1.0 µs | — | 0.87× | — | — |
+| posteriordb | radon_partially_pooled_centered | none | 1.15 µs | 0.75 µs | — | 0.65× | — | — |
+| posteriordb | radon_pooled | none | 0.7 µs | 0.45 µs | — | 0.64× | — | — |
+| posteriordb | radon_variable_intercept_centered | none | 1.0 µs | 0.85 µs | — | 0.85× | — | — |
+| posteriordb | radon_variable_intercept_noncentered | none | 0.9 µs | 1.1 µs | — | 1.22× | — | — |
+| posteriordb | radon_variable_intercept_slope_centered | none | 1.35 µs | 1.05 µs | 1.7 µs | 0.78× | 0.79× | 0.62× |
+| posteriordb | radon_variable_intercept_slope_noncentered | none | 1.2 µs | 1.2 µs | — | 1.0× | — | — |
+| posteriordb | radon_variable_slope_centered | none | 0.95 µs | 0.85 µs | — | 0.89× | — | — |
+| posteriordb | rats | none | 1.45 µs | 1.0 µs | 1.4 µs | 0.69× | 1.04× | 0.71× |
+| posteriordb | seeds | none | 2.75 µs | 2.4 µs | 3.15 µs | 0.87× | 0.87× | 0.76× |
+| posteriordb | seeds_centered | none | 3.45 µs | 3.2 µs | — | 0.93× | — | — |
+| posteriordb | seeds_stanified | none | 3.0 µs | 3.1 µs | — | 1.03× | — | — |
+| posteriordb | sesame_one_pred_a | none | 2.2 µs | 2.9 µs | — | 1.32× | — | — |
+| posteriordb | surgical_model | none | 2.0 µs | 1.7 µs | — | 0.85× | — | — |
+| posteriordb | wells_daae_c | none | 5.5 µs | 5.55 µs | — | 1.01× | — | — |
+| posteriordb | wells_dae | none | 4.75 µs | 5.25 µs | 3.3 µs | 1.11× | 1.44× | 1.59× |
+| posteriordb | wells_dae_c | none | 5.15 µs | 5.05 µs | — | 0.98× | — | — |
+| posteriordb | wells_dae_inter | none | 6.7 µs | 5.55 µs | — | 0.83× | — | — |
+| posteriordb | wells_dist | none | 3.2 µs | 3.65 µs | — | 1.14× | — | — |
+| posteriordb | wells_dist100 | none | 1.85 µs | 1.7 µs | — | 0.92× | — | — |
+| posteriordb | wells_dist100ars | none | 4.2 µs | 5.9 µs | — | 1.4× | — | — |
+| posteriordb | wells_interaction | none | 4.8 µs | 4.75 µs | — | 0.99× | — | — |
+| posteriordb | wells_interaction_c | none | 4.85 µs | 5.2 µs | — | 1.07× | — | — |
+| tutorials | bayesian-linear-regression | none | 1.0 µs | 0.8 µs | 1.1 µs | 0.8× | 0.91× | 0.73× |
+| tutorials | bayesian-logistic-regression | none | 2.55 µs | 1.45 µs | 1.75 µs | 0.57× | 1.46× | 0.83× |
+| tutorials | bayesian-poisson-regression | none | 1.45 µs | 2.25 µs | 1.75 µs | 1.55× | 0.83× | 1.29× |
+| tutorials | bayesian-time-series-analysis | none | 0.75 µs | 0.9 µs | — | 1.2× | — | — |
+| tutorials | coin-flipping | none | 1.2 µs | 1.2 µs | 1.2 µs | 1.0× | 1.0× | 1.0× |
+| tutorials | multinomial-logistic-regression | none | 8.15 µs | 8.8 µs | 20.15 µs | 1.08× | 0.4× | 0.44× |
+| tutorials | probabilistic-pca | none | 1.95 µs | 2.05 µs | 2.2 µs | 1.05× | 0.89× | 0.93× |
 
 ### Corpus layer: `gradient`
 
-| Corpus | Model | Precision | Backend | PB median | Turing median | PB/Turing |
-|---|---|---|---|---:|---:|---:|
-| posteriordb | GLM_Poisson | Float32 | ForwardDiff | 1.7 µs | — | — |
-| posteriordb | GLM_Poisson | Float32 | Mooncake | 9.15 µs | — | — |
-| posteriordb | GLM_Poisson | Float64 | ForwardDiff | 2.1 µs | 1.85 µs | 1.14× |
-| posteriordb | GLM_Poisson | Float64 | Mooncake | 6.45 µs | 4.75 µs | 1.36× |
-| posteriordb | GLM_Poisson | Float64 | ReverseDiff | 541.15 µs | 653.2 µs | 0.83× |
-| posteriordb | Rate_1 | Float32 | ForwardDiff | 0.5 µs | — | — |
-| posteriordb | Rate_1 | Float32 | Mooncake | 1.7 µs | — | — |
-| posteriordb | Rate_1 | Float32 | ReverseDiff | 40.0 µs | — | — |
-| posteriordb | Rate_1 | Float64 | ForwardDiff | 0.4 µs | 0.55 µs | 0.73× |
-| posteriordb | Rate_1 | Float64 | Mooncake | 1.15 µs | 0.9 µs | 1.28× |
-| posteriordb | Rate_1 | Float64 | ReverseDiff | 10.45 µs | 5.15 µs | 2.03× |
-| posteriordb | blr | Float32 | ForwardDiff | 1.5 µs | — | — |
-| posteriordb | blr | Float32 | ReverseDiff | 85.05 µs | — | — |
-| posteriordb | blr | Float64 | ForwardDiff | 1.2 µs | 1.35 µs | 0.89× |
-| posteriordb | blr | Float64 | Mooncake | 6.45 µs | 6.0 µs | 1.08× |
-| posteriordb | blr | Float64 | ReverseDiff | 72.9 µs | 24.7 µs | 2.95× |
-| posteriordb | dugongs | Float32 | ForwardDiff | 1.35 µs | — | — |
-| posteriordb | dugongs | Float32 | Mooncake | 5.25 µs | — | — |
-| posteriordb | dugongs | Float64 | ForwardDiff | 1.35 µs | 1.35 µs | 1.0× |
-| posteriordb | dugongs | Float64 | Mooncake | 4.15 µs | 4.6 µs | 0.9× |
-| posteriordb | dugongs | Float64 | ReverseDiff | 70.85 µs | 135.6 µs | 0.52× |
-| posteriordb | earn_height | Float32 | ForwardDiff | 2.95 µs | — | — |
-| posteriordb | earn_height | Float64 | ForwardDiff | 2.6 µs | — | — |
-| posteriordb | earn_height | Float64 | Mooncake | 42.9 µs | — | — |
-| posteriordb | earn_height | Float64 | ReverseDiff | 29.35 µs | — | — |
-| posteriordb | eight_schools_centered | Float32 | ForwardDiff | 3.05 µs | — | — |
-| posteriordb | eight_schools_centered | Float32 | Mooncake | 5.25 µs | — | — |
-| posteriordb | eight_schools_centered | Float32 | ReverseDiff | 25.9 µs | — | — |
-| posteriordb | eight_schools_centered | Float64 | ForwardDiff | 1.15 µs | 1.3 µs | 0.88× |
-| posteriordb | eight_schools_centered | Float64 | Mooncake | 4.4 µs | 4.05 µs | 1.09× |
-| posteriordb | eight_schools_centered | Float64 | ReverseDiff | 29.05 µs | 64.85 µs | 0.45× |
-| posteriordb | eight_schools_noncentered | Float32 | ForwardDiff | 1.5 µs | — | — |
-| posteriordb | eight_schools_noncentered | Float32 | Mooncake | 5.35 µs | — | — |
-| posteriordb | eight_schools_noncentered | Float32 | ReverseDiff | 19.95 µs | — | — |
-| posteriordb | eight_schools_noncentered | Float64 | ForwardDiff | 1.65 µs | — | — |
-| posteriordb | eight_schools_noncentered | Float64 | Mooncake | 4.55 µs | — | — |
-| posteriordb | eight_schools_noncentered | Float64 | ReverseDiff | 20.8 µs | — | — |
-| posteriordb | kidscore_interaction | Float32 | ForwardDiff | 3.55 µs | — | — |
-| posteriordb | kidscore_interaction | Float64 | ForwardDiff | 3.65 µs | 1.45 µs | 2.52× |
-| posteriordb | kidscore_interaction | Float64 | Mooncake | 85.6 µs | 5.1 µs | 16.78× |
-| posteriordb | kidscore_interaction | Float64 | ReverseDiff | 937.7 µs | 1.152 ms | 0.81× |
-| posteriordb | log10earn_height | Float32 | ForwardDiff | 2.75 µs | — | — |
-| posteriordb | log10earn_height | Float64 | ForwardDiff | 3.2 µs | — | — |
-| posteriordb | log10earn_height | Float64 | Mooncake | 46.4 µs | — | — |
-| posteriordb | log10earn_height | Float64 | ReverseDiff | 35.0 µs | — | — |
-| posteriordb | logearn_height_male | Float32 | ForwardDiff | 3.0 µs | — | — |
-| posteriordb | logearn_height_male | Float64 | ForwardDiff | 3.75 µs | — | — |
-| posteriordb | logearn_height_male | Float64 | Mooncake | 55.45 µs | — | — |
-| posteriordb | logearn_height_male | Float64 | ReverseDiff | 74.05 µs | — | — |
-| posteriordb | logearn_interaction | Float32 | ForwardDiff | 5.1 µs | — | — |
-| posteriordb | logearn_interaction | Float64 | ForwardDiff | 3.8 µs | — | — |
-| posteriordb | logearn_interaction | Float64 | Mooncake | 62.8 µs | — | — |
-| posteriordb | logearn_interaction | Float64 | ReverseDiff | 1.136 ms | — | — |
-| posteriordb | logearn_interaction_z | Float32 | ForwardDiff | 4.05 µs | — | — |
-| posteriordb | logearn_interaction_z | Float64 | ForwardDiff | 4.05 µs | — | — |
-| posteriordb | logearn_interaction_z | Float64 | Mooncake | 68.75 µs | — | — |
-| posteriordb | logearn_interaction_z | Float64 | ReverseDiff | 1.171 ms | — | — |
-| posteriordb | logearn_logheight_male | Float32 | ForwardDiff | 4.45 µs | — | — |
-| posteriordb | logearn_logheight_male | Float64 | ForwardDiff | 3.75 µs | — | — |
-| posteriordb | logearn_logheight_male | Float64 | Mooncake | 86.25 µs | — | — |
-| posteriordb | logearn_logheight_male | Float64 | ReverseDiff | 47.5 µs | — | — |
-| posteriordb | logistic_regression_rhs | Float32 | ForwardDiff | 20.4 µs | — | — |
-| posteriordb | logistic_regression_rhs | Float32 | ReverseDiff | 341.2 µs | — | — |
-| posteriordb | logistic_regression_rhs | Float64 | ForwardDiff | 19.3 µs | 7.45 µs | 2.59× |
-| posteriordb | logistic_regression_rhs | Float64 | Mooncake | 116.85 µs | 24.0 µs | 4.87× |
-| posteriordb | logistic_regression_rhs | Float64 | ReverseDiff | 302.55 µs | 402.85 µs | 0.75× |
-| posteriordb | logmesquite | Float32 | ForwardDiff | 5.7 µs | — | — |
-| posteriordb | logmesquite | Float64 | ForwardDiff | 5.6 µs | — | — |
-| posteriordb | logmesquite | Float64 | Mooncake | 143.65 µs | — | — |
-| posteriordb | logmesquite | Float64 | ReverseDiff | 11.185 ms | — | — |
-| posteriordb | logmesquite_logva | Float32 | ForwardDiff | 4.15 µs | — | — |
-| posteriordb | logmesquite_logva | Float64 | ForwardDiff | 4.45 µs | — | — |
-| posteriordb | logmesquite_logva | Float64 | Mooncake | 74.3 µs | — | — |
-| posteriordb | logmesquite_logva | Float64 | ReverseDiff | 1.051 ms | — | — |
-| posteriordb | logmesquite_logvas | Float32 | ForwardDiff | 8.05 µs | — | — |
-| posteriordb | logmesquite_logvas | Float64 | ForwardDiff | 6.65 µs | — | — |
-| posteriordb | logmesquite_logvas | Float64 | Mooncake | 126.95 µs | — | — |
-| posteriordb | logmesquite_logvas | Float64 | ReverseDiff | 5.364 ms | — | — |
-| posteriordb | logmesquite_logvash | Float32 | ForwardDiff | 6.25 µs | — | — |
-| posteriordb | logmesquite_logvash | Float64 | ForwardDiff | 6.65 µs | — | — |
-| posteriordb | logmesquite_logvash | Float64 | Mooncake | 109.35 µs | — | — |
-| posteriordb | logmesquite_logvash | Float64 | ReverseDiff | 67.45 µs | — | — |
-| posteriordb | logmesquite_logvolume | Float32 | ForwardDiff | 3.3 µs | — | — |
-| posteriordb | logmesquite_logvolume | Float64 | ForwardDiff | 3.15 µs | — | — |
-| posteriordb | logmesquite_logvolume | Float64 | Mooncake | 45.35 µs | — | — |
-| posteriordb | logmesquite_logvolume | Float64 | ReverseDiff | 25.6 µs | — | — |
-| posteriordb | mesquite | Float32 | ForwardDiff | 4.35 µs | — | — |
-| posteriordb | mesquite | Float64 | ForwardDiff | 4.4 µs | — | — |
-| posteriordb | mesquite | Float64 | Mooncake | 87.35 µs | — | — |
-| posteriordb | mesquite | Float64 | ReverseDiff | 5.065 ms | — | — |
-| posteriordb | nes | Float32 | ForwardDiff | 6.6 µs | — | — |
-| posteriordb | nes | Float64 | ForwardDiff | 9.1 µs | — | — |
-| posteriordb | nes | Float64 | Mooncake | 138.0 µs | — | — |
-| posteriordb | nes | Float64 | ReverseDiff | 11.362 ms | — | — |
-| posteriordb | pilots | Float32 | ForwardDiff | 4.25 µs | — | — |
-| posteriordb | pilots | Float32 | Mooncake | 10.75 µs | — | — |
-| posteriordb | pilots | Float32 | ReverseDiff | 64.75 µs | — | — |
-| posteriordb | pilots | Float64 | ForwardDiff | 6.65 µs | 4.85 µs | 1.37× |
-| posteriordb | pilots | Float64 | Mooncake | 15.45 µs | 8.65 µs | 1.79× |
-| posteriordb | pilots | Float64 | ReverseDiff | 57.6 µs | 54.95 µs | 1.05× |
-| posteriordb | radon_county | Float32 | ForwardDiff | 1.95 µs | — | — |
-| posteriordb | radon_county | Float32 | Mooncake | 6.9 µs | — | — |
-| posteriordb | radon_county | Float32 | ReverseDiff | 55.35 µs | — | — |
-| posteriordb | radon_county | Float64 | ForwardDiff | 2.95 µs | — | — |
-| posteriordb | radon_county | Float64 | Mooncake | 5.9 µs | — | — |
-| posteriordb | radon_county | Float64 | ReverseDiff | 64.7 µs | — | — |
-| posteriordb | radon_county_intercept | Float32 | ForwardDiff | 2.75 µs | — | — |
-| posteriordb | radon_county_intercept | Float32 | ReverseDiff | 89.15 µs | — | — |
-| posteriordb | radon_county_intercept | Float64 | ForwardDiff | 2.55 µs | — | — |
-| posteriordb | radon_county_intercept | Float64 | Mooncake | 7.75 µs | — | — |
-| posteriordb | radon_county_intercept | Float64 | ReverseDiff | 50.65 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float32 | ForwardDiff | 34.2 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float32 | ReverseDiff | 159.6 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float64 | ForwardDiff | 37.35 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float64 | Mooncake | 13.6 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float64 | ReverseDiff | 154.3 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float32 | ForwardDiff | 31.1 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float32 | ReverseDiff | 142.45 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float64 | ForwardDiff | 37.35 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float64 | Mooncake | 13.6 µs | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float64 | ReverseDiff | 163.8 µs | — | — |
-| posteriordb | radon_partially_pooled_centered | Float32 | ForwardDiff | 2.15 µs | — | — |
-| posteriordb | radon_partially_pooled_centered | Float32 | ReverseDiff | 54.35 µs | — | — |
-| posteriordb | radon_partially_pooled_centered | Float64 | ForwardDiff | 2.15 µs | — | — |
-| posteriordb | radon_partially_pooled_centered | Float64 | Mooncake | 7.85 µs | — | — |
-| posteriordb | radon_partially_pooled_centered | Float64 | ReverseDiff | 43.95 µs | — | — |
-| posteriordb | radon_pooled | Float32 | ForwardDiff | 1.4 µs | — | — |
-| posteriordb | radon_pooled | Float64 | ForwardDiff | 1.05 µs | — | — |
-| posteriordb | radon_pooled | Float64 | Mooncake | 4.9 µs | — | — |
-| posteriordb | radon_pooled | Float64 | ReverseDiff | 39.95 µs | — | — |
-| posteriordb | radon_variable_intercept_centered | Float32 | ForwardDiff | 3.2 µs | — | — |
-| posteriordb | radon_variable_intercept_centered | Float32 | ReverseDiff | 90.4 µs | — | — |
-| posteriordb | radon_variable_intercept_centered | Float64 | ForwardDiff | 3.95 µs | — | — |
-| posteriordb | radon_variable_intercept_centered | Float64 | Mooncake | 9.3 µs | — | — |
-| posteriordb | radon_variable_intercept_centered | Float64 | ReverseDiff | 79.9 µs | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float32 | ForwardDiff | 3.75 µs | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float32 | ReverseDiff | 69.1 µs | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float64 | ForwardDiff | 5.2 µs | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float64 | Mooncake | 12.35 µs | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float64 | ReverseDiff | 64.65 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_centered | Float32 | ForwardDiff | 7.2 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_centered | Float32 | ReverseDiff | 87.6 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_centered | Float64 | ForwardDiff | 10.1 µs | 7.75 µs | 1.3× |
-| posteriordb | radon_variable_intercept_slope_centered | Float64 | Mooncake | 15.55 µs | 15.05 µs | 1.03× |
-| posteriordb | radon_variable_intercept_slope_centered | Float64 | ReverseDiff | 84.0 µs | 89.35 µs | 0.94× |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float32 | ForwardDiff | 8.2 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float32 | ReverseDiff | 90.15 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float64 | ForwardDiff | 9.55 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float64 | Mooncake | 15.5 µs | — | — |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float64 | ReverseDiff | 81.5 µs | — | — |
-| posteriordb | radon_variable_slope_centered | Float32 | ForwardDiff | 2.75 µs | — | — |
-| posteriordb | radon_variable_slope_centered | Float32 | ReverseDiff | 89.1 µs | — | — |
-| posteriordb | radon_variable_slope_centered | Float64 | ForwardDiff | 3.5 µs | — | — |
-| posteriordb | radon_variable_slope_centered | Float64 | Mooncake | 9.2 µs | — | — |
-| posteriordb | radon_variable_slope_centered | Float64 | ReverseDiff | 73.9 µs | — | — |
-| posteriordb | rats | Float32 | ForwardDiff | 4.7 µs | — | — |
-| posteriordb | rats | Float32 | Mooncake | 14.05 µs | — | — |
-| posteriordb | rats | Float32 | ReverseDiff | 56.4 µs | — | — |
-| posteriordb | rats | Float64 | ForwardDiff | 6.35 µs | 5.6 µs | 1.13× |
-| posteriordb | rats | Float64 | Mooncake | 12.05 µs | 6.7 µs | 1.8× |
-| posteriordb | rats | Float64 | ReverseDiff | 52.9 µs | 59.4 µs | 0.89× |
-| posteriordb | seeds | Float32 | ForwardDiff | 10.15 µs | — | — |
-| posteriordb | seeds | Float32 | Mooncake | 15.35 µs | — | — |
-| posteriordb | seeds | Float32 | ReverseDiff | 183.8 µs | — | — |
-| posteriordb | seeds | Float64 | ForwardDiff | 10.25 µs | 12.15 µs | 0.84× |
-| posteriordb | seeds | Float64 | Mooncake | 15.5 µs | 16.6 µs | 0.93× |
-| posteriordb | seeds | Float64 | ReverseDiff | 194.7 µs | 187.05 µs | 1.04× |
-| posteriordb | seeds_centered | Float32 | ForwardDiff | 11.35 µs | — | — |
-| posteriordb | seeds_centered | Float32 | Mooncake | 18.0 µs | — | — |
-| posteriordb | seeds_centered | Float32 | ReverseDiff | 188.85 µs | — | — |
-| posteriordb | seeds_centered | Float64 | ForwardDiff | 22.55 µs | — | — |
-| posteriordb | seeds_centered | Float64 | Mooncake | 18.9 µs | — | — |
-| posteriordb | seeds_centered | Float64 | ReverseDiff | 201.85 µs | — | — |
-| posteriordb | seeds_stanified | Float32 | ForwardDiff | 19.5 µs | — | — |
-| posteriordb | seeds_stanified | Float32 | Mooncake | 17.35 µs | — | — |
-| posteriordb | seeds_stanified | Float32 | ReverseDiff | 188.0 µs | — | — |
-| posteriordb | seeds_stanified | Float64 | ForwardDiff | 16.55 µs | — | — |
-| posteriordb | seeds_stanified | Float64 | Mooncake | 18.5 µs | — | — |
-| posteriordb | seeds_stanified | Float64 | ReverseDiff | 179.45 µs | — | — |
-| posteriordb | sesame_one_pred_a | Float32 | ForwardDiff | 3.35 µs | — | — |
-| posteriordb | sesame_one_pred_a | Float64 | ForwardDiff | 2.75 µs | — | — |
-| posteriordb | sesame_one_pred_a | Float64 | Mooncake | 45.4 µs | — | — |
-| posteriordb | sesame_one_pred_a | Float64 | ReverseDiff | 28.95 µs | — | — |
-| posteriordb | surgical_model | Float32 | ForwardDiff | 4.95 µs | — | — |
-| posteriordb | surgical_model | Float32 | Mooncake | 10.5 µs | — | — |
-| posteriordb | surgical_model | Float32 | ReverseDiff | 48.35 µs | — | — |
-| posteriordb | surgical_model | Float64 | ForwardDiff | 6.05 µs | — | — |
-| posteriordb | surgical_model | Float64 | Mooncake | 12.5 µs | — | — |
-| posteriordb | surgical_model | Float64 | ReverseDiff | 46.9 µs | — | — |
-| posteriordb | wells_daae_c | Float32 | ForwardDiff | 8.55 µs | — | — |
-| posteriordb | wells_daae_c | Float32 | ReverseDiff | 218.15 µs | — | — |
-| posteriordb | wells_daae_c | Float64 | ForwardDiff | 8.6 µs | — | — |
-| posteriordb | wells_daae_c | Float64 | Mooncake | 96.85 µs | — | — |
-| posteriordb | wells_daae_c | Float64 | ReverseDiff | 164.15 µs | — | — |
-| posteriordb | wells_dae | Float32 | ForwardDiff | 6.7 µs | — | — |
-| posteriordb | wells_dae | Float32 | ReverseDiff | 136.4 µs | — | — |
-| posteriordb | wells_dae | Float64 | ForwardDiff | 7.2 µs | 3.7 µs | 1.95× |
-| posteriordb | wells_dae | Float64 | Mooncake | 73.55 µs | 26.75 µs | 2.75× |
-| posteriordb | wells_dae | Float64 | ReverseDiff | 141.25 µs | 59.4 µs | 2.38× |
-| posteriordb | wells_dae_c | Float32 | ForwardDiff | 7.5 µs | — | — |
-| posteriordb | wells_dae_c | Float32 | ReverseDiff | 155.45 µs | — | — |
-| posteriordb | wells_dae_c | Float64 | ForwardDiff | 8.1 µs | — | — |
-| posteriordb | wells_dae_c | Float64 | Mooncake | 85.75 µs | — | — |
-| posteriordb | wells_dae_c | Float64 | ReverseDiff | 146.75 µs | — | — |
-| posteriordb | wells_dae_inter | Float32 | ForwardDiff | 8.45 µs | — | — |
-| posteriordb | wells_dae_inter | Float32 | ReverseDiff | 201.55 µs | — | — |
-| posteriordb | wells_dae_inter | Float64 | ForwardDiff | 8.55 µs | — | — |
-| posteriordb | wells_dae_inter | Float64 | Mooncake | 111.05 µs | — | — |
-| posteriordb | wells_dae_inter | Float64 | ReverseDiff | 183.15 µs | — | — |
-| posteriordb | wells_dist | Float32 | ForwardDiff | 6.5 µs | — | — |
-| posteriordb | wells_dist | Float32 | ReverseDiff | 53.45 µs | — | — |
-| posteriordb | wells_dist | Float64 | ForwardDiff | 4.7 µs | — | — |
-| posteriordb | wells_dist | Float64 | Mooncake | 53.8 µs | — | — |
-| posteriordb | wells_dist | Float64 | ReverseDiff | 58.95 µs | — | — |
-| posteriordb | wells_dist100 | Float32 | ForwardDiff | 2.65 µs | — | — |
-| posteriordb | wells_dist100 | Float32 | Mooncake | 12.55 µs | — | — |
-| posteriordb | wells_dist100 | Float32 | ReverseDiff | 56.8 µs | — | — |
-| posteriordb | wells_dist100 | Float64 | ForwardDiff | 2.95 µs | — | — |
-| posteriordb | wells_dist100 | Float64 | Mooncake | 15.25 µs | — | — |
-| posteriordb | wells_dist100 | Float64 | ReverseDiff | 69.35 µs | — | — |
-| posteriordb | wells_dist100ars | Float32 | ForwardDiff | 8.0 µs | — | — |
-| posteriordb | wells_dist100ars | Float32 | ReverseDiff | 117.75 µs | — | — |
-| posteriordb | wells_dist100ars | Float64 | ForwardDiff | 5.75 µs | — | — |
-| posteriordb | wells_dist100ars | Float64 | Mooncake | 60.15 µs | — | — |
-| posteriordb | wells_dist100ars | Float64 | ReverseDiff | 115.45 µs | — | — |
-| posteriordb | wells_interaction | Float32 | ForwardDiff | 9.35 µs | — | — |
-| posteriordb | wells_interaction | Float32 | ReverseDiff | 164.55 µs | — | — |
-| posteriordb | wells_interaction | Float64 | ForwardDiff | 6.5 µs | — | — |
-| posteriordb | wells_interaction | Float64 | Mooncake | 72.85 µs | — | — |
-| posteriordb | wells_interaction | Float64 | ReverseDiff | 156.25 µs | — | — |
-| posteriordb | wells_interaction_c | Float32 | ForwardDiff | 6.6 µs | — | — |
-| posteriordb | wells_interaction_c | Float32 | ReverseDiff | 181.75 µs | — | — |
-| posteriordb | wells_interaction_c | Float64 | ForwardDiff | 6.6 µs | — | — |
-| posteriordb | wells_interaction_c | Float64 | Mooncake | 76.0 µs | — | — |
-| posteriordb | wells_interaction_c | Float64 | ReverseDiff | 138.55 µs | — | — |
-| tutorials | bayesian-linear-regression | Float32 | ForwardDiff | 1.35 µs | — | — |
-| tutorials | bayesian-linear-regression | Float32 | ReverseDiff | 79.1 µs | — | — |
-| tutorials | bayesian-linear-regression | Float64 | ForwardDiff | 2.15 µs | 1.1 µs | 1.95× |
-| tutorials | bayesian-linear-regression | Float64 | Mooncake | 5.0 µs | 6.1 µs | 0.82× |
-| tutorials | bayesian-linear-regression | Float64 | ReverseDiff | 75.2 µs | 33.15 µs | 2.27× |
-| tutorials | bayesian-logistic-regression | Float32 | ForwardDiff | 3.15 µs | — | — |
-| tutorials | bayesian-logistic-regression | Float32 | Mooncake | 8.35 µs | — | — |
-| tutorials | bayesian-logistic-regression | Float64 | ForwardDiff | 4.6 µs | 1.65 µs | 2.79× |
-| tutorials | bayesian-logistic-regression | Float64 | Mooncake | 8.85 µs | 8.05 µs | 1.1× |
-| tutorials | bayesian-logistic-regression | Float64 | ReverseDiff | 1.156 ms | 1.449 ms | 0.8× |
-| tutorials | bayesian-poisson-regression | Float32 | ForwardDiff | 4.6 µs | — | — |
-| tutorials | bayesian-poisson-regression | Float32 | Mooncake | 8.1 µs | — | — |
-| tutorials | bayesian-poisson-regression | Float64 | ForwardDiff | 2.95 µs | 3.0 µs | 0.98× |
-| tutorials | bayesian-poisson-regression | Float64 | Mooncake | 8.55 µs | 31.4 µs | 0.27× |
-| tutorials | bayesian-poisson-regression | Float64 | ReverseDiff | 781.15 µs | 1.035 ms | 0.75× |
-| tutorials | bayesian-time-series-analysis | Float32 | ForwardDiff | 9.9 µs | — | — |
-| tutorials | bayesian-time-series-analysis | Float64 | ForwardDiff | 13.7 µs | — | — |
-| tutorials | bayesian-time-series-analysis | Float64 | Mooncake | 7.55 µs | — | — |
-| tutorials | bayesian-time-series-analysis | Float64 | ReverseDiff | 79.75 µs | — | — |
-| tutorials | coin-flipping | Float32 | ForwardDiff | 1.4 µs | — | — |
-| tutorials | coin-flipping | Float32 | Mooncake | 6.2 µs | — | — |
-| tutorials | coin-flipping | Float32 | ReverseDiff | 60.95 µs | — | — |
-| tutorials | coin-flipping | Float64 | ForwardDiff | 1.5 µs | 1.45 µs | 1.03× |
-| tutorials | coin-flipping | Float64 | Mooncake | 6.05 µs | 6.15 µs | 0.98× |
-| tutorials | coin-flipping | Float64 | ReverseDiff | 34.35 µs | 31.5 µs | 1.09× |
-| tutorials | multinomial-logistic-regression | Float32 | ForwardDiff | 30.35 µs | — | — |
-| tutorials | multinomial-logistic-regression | Float32 | Mooncake | 65.9 µs | — | — |
-| tutorials | multinomial-logistic-regression | Float64 | ForwardDiff | 15.6 µs | 12.15 µs | 1.28× |
-| tutorials | multinomial-logistic-regression | Float64 | Mooncake | 66.1 µs | 70.2 µs | 0.94× |
-| tutorials | probabilistic-pca | Float32 | ForwardDiff | 35.55 µs | — | — |
-| tutorials | probabilistic-pca | Float32 | Mooncake | 35.5 µs | — | — |
-| tutorials | probabilistic-pca | Float32 | ReverseDiff | 217.1 µs | — | — |
-| tutorials | probabilistic-pca | Float64 | ForwardDiff | 56.1 µs | 37.25 µs | 1.51× |
-| tutorials | probabilistic-pca | Float64 | Mooncake | 44.6 µs | 27.45 µs | 1.62× |
-| tutorials | probabilistic-pca | Float64 | ReverseDiff | 214.35 µs | 157.7 µs | 1.36× |
+| Corpus | Model | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| posteriordb | GLM_Poisson | Enzyme | 5.85 µs | — | — | — | — | — |
+| posteriordb | GLM_Poisson | ForwardDiff | 2.45 µs | 2.4 µs | 1.85 µs | 0.98× | 1.32× | 1.3× |
+| posteriordb | GLM_Poisson | Mooncake | 9.35 µs | 13.1 µs | 4.75 µs | 1.4× | 1.97× | 2.76× |
+| posteriordb | GLM_Poisson | ReverseDiff | 541.15 µs | — | 653.2 µs | — | 0.83× | — |
+| posteriordb | Rate_1 | Enzyme | 1.5 µs | — | — | — | — | — |
+| posteriordb | Rate_1 | ForwardDiff | 0.65 µs | 0.7 µs | 0.55 µs | 1.08× | 1.18× | 1.27× |
+| posteriordb | Rate_1 | Mooncake | 2.4 µs | 3.05 µs | 0.9 µs | 1.27× | 2.67× | 3.39× |
+| posteriordb | Rate_1 | ReverseDiff | 10.45 µs | 40.0 µs | 5.15 µs | 3.83× | 2.03× | 7.77× |
+| posteriordb | blr | Enzyme | 7.6 µs | 7.35 µs | — | 0.97× | — | — |
+| posteriordb | blr | ForwardDiff | 1.7 µs | 2.0 µs | 1.35 µs | 1.18× | 1.26× | 1.48× |
+| posteriordb | blr | Mooncake | 11.25 µs | — | 6.0 µs | — | 1.87× | — |
+| posteriordb | blr | ReverseDiff | 72.9 µs | 85.05 µs | 24.7 µs | 1.17× | 2.95× | 3.44× |
+| posteriordb | dugongs | Enzyme | 8.95 µs | — | — | — | — | — |
+| posteriordb | dugongs | ForwardDiff | 2.6 µs | 1.95 µs | 1.35 µs | 0.75× | 1.93× | 1.44× |
+| posteriordb | dugongs | Mooncake | 7.45 µs | 6.45 µs | 4.6 µs | 0.87× | 1.62× | 1.4× |
+| posteriordb | dugongs | ReverseDiff | 70.85 µs | — | 135.6 µs | — | 0.52× | — |
+| posteriordb | earn_height | ForwardDiff | 2.6 µs | 2.95 µs | — | 1.13× | — | — |
+| posteriordb | earn_height | Mooncake | 42.9 µs | — | — | — | — | — |
+| posteriordb | earn_height | ReverseDiff | 29.35 µs | — | — | — | — | — |
+| posteriordb | eight_schools_centered | Enzyme | 8.3 µs | 6.8 µs | — | 0.82× | — | — |
+| posteriordb | eight_schools_centered | ForwardDiff | 2.0 µs | 2.35 µs | 1.3 µs | 1.18× | 1.54× | 1.81× |
+| posteriordb | eight_schools_centered | Mooncake | 6.1 µs | 7.5 µs | 4.05 µs | 1.23× | 1.51× | 1.85× |
+| posteriordb | eight_schools_centered | ReverseDiff | 29.05 µs | 25.9 µs | 64.85 µs | 0.89× | 0.45× | 0.4× |
+| posteriordb | eight_schools_noncentered | Enzyme | 5.1 µs | 7.45 µs | — | 1.46× | — | — |
+| posteriordb | eight_schools_noncentered | ForwardDiff | 1.65 µs | 3.25 µs | — | 1.97× | — | — |
+| posteriordb | eight_schools_noncentered | Mooncake | 9.6 µs | 7.35 µs | — | 0.77× | — | — |
+| posteriordb | eight_schools_noncentered | ReverseDiff | 20.8 µs | 19.95 µs | — | 0.96× | — | — |
+| posteriordb | kidscore_interaction | ForwardDiff | 3.65 µs | 3.55 µs | 1.45 µs | 0.97× | 2.52× | 2.45× |
+| posteriordb | kidscore_interaction | Mooncake | 85.6 µs | — | 5.1 µs | — | 16.78× | — |
+| posteriordb | kidscore_interaction | ReverseDiff | 937.7 µs | — | 1.152 ms | — | 0.81× | — |
+| posteriordb | log10earn_height | ForwardDiff | 3.2 µs | 2.75 µs | — | 0.86× | — | — |
+| posteriordb | log10earn_height | Mooncake | 46.4 µs | — | — | — | — | — |
+| posteriordb | log10earn_height | ReverseDiff | 35.0 µs | — | — | — | — | — |
+| posteriordb | logearn_height_male | ForwardDiff | 3.75 µs | 3.0 µs | — | 0.8× | — | — |
+| posteriordb | logearn_height_male | Mooncake | 55.45 µs | — | — | — | — | — |
+| posteriordb | logearn_height_male | ReverseDiff | 74.05 µs | — | — | — | — | — |
+| posteriordb | logearn_interaction | ForwardDiff | 3.8 µs | 5.1 µs | — | 1.34× | — | — |
+| posteriordb | logearn_interaction | Mooncake | 62.8 µs | — | — | — | — | — |
+| posteriordb | logearn_interaction | ReverseDiff | 1.136 ms | — | — | — | — | — |
+| posteriordb | logearn_interaction_z | ForwardDiff | 4.05 µs | 4.05 µs | — | 1.0× | — | — |
+| posteriordb | logearn_interaction_z | Mooncake | 68.75 µs | — | — | — | — | — |
+| posteriordb | logearn_interaction_z | ReverseDiff | 1.171 ms | — | — | — | — | — |
+| posteriordb | logearn_logheight_male | ForwardDiff | 3.75 µs | 4.45 µs | — | 1.19× | — | — |
+| posteriordb | logearn_logheight_male | Mooncake | 86.25 µs | — | — | — | — | — |
+| posteriordb | logearn_logheight_male | ReverseDiff | 47.5 µs | — | — | — | — | — |
+| posteriordb | logistic_regression_rhs | ForwardDiff | 19.3 µs | 20.4 µs | 7.45 µs | 1.06× | 2.59× | 2.74× |
+| posteriordb | logistic_regression_rhs | Mooncake | 116.85 µs | — | 24.0 µs | — | 4.87× | — |
+| posteriordb | logistic_regression_rhs | ReverseDiff | 302.55 µs | 341.2 µs | 402.85 µs | 1.13× | 0.75× | 0.85× |
+| posteriordb | logmesquite | ForwardDiff | 5.6 µs | 5.7 µs | — | 1.02× | — | — |
+| posteriordb | logmesquite | Mooncake | 143.65 µs | — | — | — | — | — |
+| posteriordb | logmesquite | ReverseDiff | 11.185 ms | — | — | — | — | — |
+| posteriordb | logmesquite_logva | ForwardDiff | 4.45 µs | 4.15 µs | — | 0.93× | — | — |
+| posteriordb | logmesquite_logva | Mooncake | 74.3 µs | — | — | — | — | — |
+| posteriordb | logmesquite_logva | ReverseDiff | 1.051 ms | — | — | — | — | — |
+| posteriordb | logmesquite_logvas | ForwardDiff | 6.65 µs | 8.05 µs | — | 1.21× | — | — |
+| posteriordb | logmesquite_logvas | Mooncake | 126.95 µs | — | — | — | — | — |
+| posteriordb | logmesquite_logvas | ReverseDiff | 5.364 ms | — | — | — | — | — |
+| posteriordb | logmesquite_logvash | ForwardDiff | 6.65 µs | 6.25 µs | — | 0.94× | — | — |
+| posteriordb | logmesquite_logvash | Mooncake | 109.35 µs | — | — | — | — | — |
+| posteriordb | logmesquite_logvash | ReverseDiff | 67.45 µs | — | — | — | — | — |
+| posteriordb | logmesquite_logvolume | ForwardDiff | 3.15 µs | 3.3 µs | — | 1.05× | — | — |
+| posteriordb | logmesquite_logvolume | Mooncake | 45.35 µs | — | — | — | — | — |
+| posteriordb | logmesquite_logvolume | ReverseDiff | 25.6 µs | — | — | — | — | — |
+| posteriordb | mesquite | ForwardDiff | 4.4 µs | 4.35 µs | — | 0.99× | — | — |
+| posteriordb | mesquite | Mooncake | 87.35 µs | — | — | — | — | — |
+| posteriordb | mesquite | ReverseDiff | 5.065 ms | — | — | — | — | — |
+| posteriordb | nes | ForwardDiff | 9.1 µs | 6.6 µs | — | 0.73× | — | — |
+| posteriordb | nes | Mooncake | 138.0 µs | — | — | — | — | — |
+| posteriordb | nes | ReverseDiff | 11.362 ms | — | — | — | — | — |
+| posteriordb | pilots | ForwardDiff | 6.65 µs | 4.25 µs | 4.85 µs | 0.64× | 1.37× | 0.88× |
+| posteriordb | pilots | Mooncake | 15.45 µs | 10.75 µs | 8.65 µs | 0.7× | 1.79× | 1.24× |
+| posteriordb | pilots | ReverseDiff | 57.6 µs | 64.75 µs | 54.95 µs | 1.12× | 1.05× | 1.18× |
+| posteriordb | radon_county | ForwardDiff | 2.95 µs | 1.95 µs | — | 0.66× | — | — |
+| posteriordb | radon_county | Mooncake | 5.9 µs | 6.9 µs | — | 1.17× | — | — |
+| posteriordb | radon_county | ReverseDiff | 64.7 µs | 55.35 µs | — | 0.86× | — | — |
+| posteriordb | radon_county_intercept | ForwardDiff | 2.55 µs | 2.75 µs | — | 1.08× | — | — |
+| posteriordb | radon_county_intercept | Mooncake | 7.75 µs | — | — | — | — | — |
+| posteriordb | radon_county_intercept | ReverseDiff | 50.65 µs | 89.15 µs | — | 1.76× | — | — |
+| posteriordb | radon_hierarchical_intercept_centered | ForwardDiff | 37.35 µs | 34.2 µs | — | 0.92× | — | — |
+| posteriordb | radon_hierarchical_intercept_centered | Mooncake | 13.6 µs | — | — | — | — | — |
+| posteriordb | radon_hierarchical_intercept_centered | ReverseDiff | 154.3 µs | 159.6 µs | — | 1.03× | — | — |
+| posteriordb | radon_hierarchical_intercept_noncentered | ForwardDiff | 37.35 µs | 31.1 µs | — | 0.83× | — | — |
+| posteriordb | radon_hierarchical_intercept_noncentered | Mooncake | 13.6 µs | — | — | — | — | — |
+| posteriordb | radon_hierarchical_intercept_noncentered | ReverseDiff | 163.8 µs | 142.45 µs | — | 0.87× | — | — |
+| posteriordb | radon_partially_pooled_centered | ForwardDiff | 2.15 µs | 2.15 µs | — | 1.0× | — | — |
+| posteriordb | radon_partially_pooled_centered | Mooncake | 7.85 µs | — | — | — | — | — |
+| posteriordb | radon_partially_pooled_centered | ReverseDiff | 43.95 µs | 54.35 µs | — | 1.24× | — | — |
+| posteriordb | radon_pooled | ForwardDiff | 1.05 µs | 1.4 µs | — | 1.33× | — | — |
+| posteriordb | radon_pooled | Mooncake | 4.9 µs | — | — | — | — | — |
+| posteriordb | radon_pooled | ReverseDiff | 39.95 µs | — | — | — | — | — |
+| posteriordb | radon_variable_intercept_centered | ForwardDiff | 3.95 µs | 3.2 µs | — | 0.81× | — | — |
+| posteriordb | radon_variable_intercept_centered | Mooncake | 9.3 µs | — | — | — | — | — |
+| posteriordb | radon_variable_intercept_centered | ReverseDiff | 79.9 µs | 90.4 µs | — | 1.13× | — | — |
+| posteriordb | radon_variable_intercept_noncentered | ForwardDiff | 5.2 µs | 3.75 µs | — | 0.72× | — | — |
+| posteriordb | radon_variable_intercept_noncentered | Mooncake | 12.35 µs | — | — | — | — | — |
+| posteriordb | radon_variable_intercept_noncentered | ReverseDiff | 64.65 µs | 69.1 µs | — | 1.07× | — | — |
+| posteriordb | radon_variable_intercept_slope_centered | ForwardDiff | 10.1 µs | 7.2 µs | 7.75 µs | 0.71× | 1.3× | 0.93× |
+| posteriordb | radon_variable_intercept_slope_centered | Mooncake | 15.55 µs | — | 15.05 µs | — | 1.03× | — |
+| posteriordb | radon_variable_intercept_slope_centered | ReverseDiff | 84.0 µs | 87.6 µs | 89.35 µs | 1.04× | 0.94× | 0.98× |
+| posteriordb | radon_variable_intercept_slope_noncentered | ForwardDiff | 9.55 µs | 8.2 µs | — | 0.86× | — | — |
+| posteriordb | radon_variable_intercept_slope_noncentered | Mooncake | 15.5 µs | — | — | — | — | — |
+| posteriordb | radon_variable_intercept_slope_noncentered | ReverseDiff | 81.5 µs | 90.15 µs | — | 1.11× | — | — |
+| posteriordb | radon_variable_slope_centered | ForwardDiff | 3.5 µs | 2.75 µs | — | 0.79× | — | — |
+| posteriordb | radon_variable_slope_centered | Mooncake | 9.2 µs | — | — | — | — | — |
+| posteriordb | radon_variable_slope_centered | ReverseDiff | 73.9 µs | 89.1 µs | — | 1.21× | — | — |
+| posteriordb | rats | ForwardDiff | 6.35 µs | 4.7 µs | 5.6 µs | 0.74× | 1.13× | 0.84× |
+| posteriordb | rats | Mooncake | 12.05 µs | 14.05 µs | 6.7 µs | 1.17× | 1.8× | 2.1× |
+| posteriordb | rats | ReverseDiff | 52.9 µs | 56.4 µs | 59.4 µs | 1.07× | 0.89× | 0.95× |
+| posteriordb | seeds | ForwardDiff | 10.25 µs | 10.15 µs | 12.15 µs | 0.99× | 0.84× | 0.84× |
+| posteriordb | seeds | Mooncake | 15.5 µs | 15.35 µs | 16.6 µs | 0.99× | 0.93× | 0.92× |
+| posteriordb | seeds | ReverseDiff | 194.7 µs | 183.8 µs | 187.05 µs | 0.94× | 1.04× | 0.98× |
+| posteriordb | seeds_centered | ForwardDiff | 22.55 µs | 11.35 µs | — | 0.5× | — | — |
+| posteriordb | seeds_centered | Mooncake | 18.9 µs | 18.0 µs | — | 0.95× | — | — |
+| posteriordb | seeds_centered | ReverseDiff | 201.85 µs | 188.85 µs | — | 0.94× | — | — |
+| posteriordb | seeds_stanified | ForwardDiff | 16.55 µs | 19.5 µs | — | 1.18× | — | — |
+| posteriordb | seeds_stanified | Mooncake | 18.5 µs | 17.35 µs | — | 0.94× | — | — |
+| posteriordb | seeds_stanified | ReverseDiff | 179.45 µs | 188.0 µs | — | 1.05× | — | — |
+| posteriordb | sesame_one_pred_a | ForwardDiff | 2.75 µs | 3.35 µs | — | 1.22× | — | — |
+| posteriordb | sesame_one_pred_a | Mooncake | 45.4 µs | — | — | — | — | — |
+| posteriordb | sesame_one_pred_a | ReverseDiff | 28.95 µs | — | — | — | — | — |
+| posteriordb | surgical_model | ForwardDiff | 6.05 µs | 4.95 µs | — | 0.82× | — | — |
+| posteriordb | surgical_model | Mooncake | 12.5 µs | 10.5 µs | — | 0.84× | — | — |
+| posteriordb | surgical_model | ReverseDiff | 46.9 µs | 48.35 µs | — | 1.03× | — | — |
+| posteriordb | wells_daae_c | ForwardDiff | 8.6 µs | 8.55 µs | — | 0.99× | — | — |
+| posteriordb | wells_daae_c | Mooncake | 96.85 µs | — | — | — | — | — |
+| posteriordb | wells_daae_c | ReverseDiff | 164.15 µs | 218.15 µs | — | 1.33× | — | — |
+| posteriordb | wells_dae | ForwardDiff | 7.2 µs | 6.7 µs | 3.7 µs | 0.93× | 1.95× | 1.81× |
+| posteriordb | wells_dae | Mooncake | 73.55 µs | — | 26.75 µs | — | 2.75× | — |
+| posteriordb | wells_dae | ReverseDiff | 141.25 µs | 136.4 µs | 59.4 µs | 0.97× | 2.38× | 2.3× |
+| posteriordb | wells_dae_c | ForwardDiff | 8.1 µs | 7.5 µs | — | 0.93× | — | — |
+| posteriordb | wells_dae_c | Mooncake | 85.75 µs | — | — | — | — | — |
+| posteriordb | wells_dae_c | ReverseDiff | 146.75 µs | 155.45 µs | — | 1.06× | — | — |
+| posteriordb | wells_dae_inter | ForwardDiff | 8.55 µs | 8.45 µs | — | 0.99× | — | — |
+| posteriordb | wells_dae_inter | Mooncake | 111.05 µs | — | — | — | — | — |
+| posteriordb | wells_dae_inter | ReverseDiff | 183.15 µs | 201.55 µs | — | 1.1× | — | — |
+| posteriordb | wells_dist | ForwardDiff | 4.7 µs | 6.5 µs | — | 1.38× | — | — |
+| posteriordb | wells_dist | Mooncake | 53.8 µs | — | — | — | — | — |
+| posteriordb | wells_dist | ReverseDiff | 58.95 µs | 53.45 µs | — | 0.91× | — | — |
+| posteriordb | wells_dist100 | ForwardDiff | 2.95 µs | 2.65 µs | — | 0.9× | — | — |
+| posteriordb | wells_dist100 | Mooncake | 15.25 µs | 12.55 µs | — | 0.82× | — | — |
+| posteriordb | wells_dist100 | ReverseDiff | 69.35 µs | 56.8 µs | — | 0.82× | — | — |
+| posteriordb | wells_dist100ars | ForwardDiff | 5.75 µs | 8.0 µs | — | 1.39× | — | — |
+| posteriordb | wells_dist100ars | Mooncake | 60.15 µs | — | — | — | — | — |
+| posteriordb | wells_dist100ars | ReverseDiff | 115.45 µs | 117.75 µs | — | 1.02× | — | — |
+| posteriordb | wells_interaction | ForwardDiff | 6.5 µs | 9.35 µs | — | 1.44× | — | — |
+| posteriordb | wells_interaction | Mooncake | 72.85 µs | — | — | — | — | — |
+| posteriordb | wells_interaction | ReverseDiff | 156.25 µs | 164.55 µs | — | 1.05× | — | — |
+| posteriordb | wells_interaction_c | ForwardDiff | 6.6 µs | 6.6 µs | — | 1.0× | — | — |
+| posteriordb | wells_interaction_c | Mooncake | 76.0 µs | — | — | — | — | — |
+| posteriordb | wells_interaction_c | ReverseDiff | 138.55 µs | 181.75 µs | — | 1.31× | — | — |
+| tutorials | bayesian-linear-regression | ForwardDiff | 2.15 µs | 1.35 µs | 1.1 µs | 0.63× | 1.95× | 1.23× |
+| tutorials | bayesian-linear-regression | Mooncake | 5.0 µs | — | 6.1 µs | — | 0.82× | — |
+| tutorials | bayesian-linear-regression | ReverseDiff | 75.2 µs | 79.1 µs | 33.15 µs | 1.05× | 2.27× | 2.39× |
+| tutorials | bayesian-logistic-regression | ForwardDiff | 4.6 µs | 3.15 µs | 1.65 µs | 0.68× | 2.79× | 1.91× |
+| tutorials | bayesian-logistic-regression | Mooncake | 8.85 µs | 8.35 µs | 8.05 µs | 0.94× | 1.1× | 1.04× |
+| tutorials | bayesian-logistic-regression | ReverseDiff | 1.156 ms | — | 1.449 ms | — | 0.8× | — |
+| tutorials | bayesian-poisson-regression | ForwardDiff | 2.95 µs | 4.6 µs | 3.0 µs | 1.56× | 0.98× | 1.53× |
+| tutorials | bayesian-poisson-regression | Mooncake | 8.55 µs | 8.1 µs | 31.4 µs | 0.95× | 0.27× | 0.26× |
+| tutorials | bayesian-poisson-regression | ReverseDiff | 781.15 µs | — | 1.035 ms | — | 0.75× | — |
+| tutorials | bayesian-time-series-analysis | ForwardDiff | 13.7 µs | 9.9 µs | — | 0.72× | — | — |
+| tutorials | bayesian-time-series-analysis | Mooncake | 7.55 µs | — | — | — | — | — |
+| tutorials | bayesian-time-series-analysis | ReverseDiff | 79.75 µs | — | — | — | — | — |
+| tutorials | coin-flipping | ForwardDiff | 1.5 µs | 1.4 µs | 1.45 µs | 0.93× | 1.03× | 0.97× |
+| tutorials | coin-flipping | Mooncake | 6.05 µs | 6.2 µs | 6.15 µs | 1.02× | 0.98× | 1.01× |
+| tutorials | coin-flipping | ReverseDiff | 34.35 µs | 60.95 µs | 31.5 µs | 1.77× | 1.09× | 1.93× |
+| tutorials | multinomial-logistic-regression | ForwardDiff | 15.6 µs | 30.35 µs | 12.15 µs | 1.95× | 1.28× | 2.5× |
+| tutorials | multinomial-logistic-regression | Mooncake | 66.1 µs | 65.9 µs | 70.2 µs | 1.0× | 0.94× | 0.94× |
+| tutorials | probabilistic-pca | ForwardDiff | 56.1 µs | 35.55 µs | 37.25 µs | 0.63× | 1.51× | 0.95× |
+| tutorials | probabilistic-pca | Mooncake | 44.6 µs | 35.5 µs | 27.45 µs | 0.8× | 1.62× | 1.29× |
+| tutorials | probabilistic-pca | ReverseDiff | 214.35 µs | 217.1 µs | 157.7 µs | 1.01× | 1.36× | 1.38× |
 
 ### Corpus layer: `nuts`
 
-| Corpus | Model | Precision | Backend | PB median | Turing median | PB/Turing |
-|---|---|---|---|---:|---:|---:|
-| posteriordb | GLM_Poisson | Float32 | ForwardDiff | 4.067 ms | — | — |
-| posteriordb | GLM_Poisson | Float64 | ForwardDiff | 3.253 ms | 10.033 ms | 0.32× |
-| posteriordb | Rate_1 | Float32 | ForwardDiff | 691.0 µs | — | — |
-| posteriordb | Rate_1 | Float64 | ForwardDiff | 714.9 µs | 2.52 ms | 0.28× |
-| posteriordb | blr | Float32 | ForwardDiff | 1.667 ms | — | — |
-| posteriordb | blr | Float64 | ForwardDiff | 2.086 ms | 4.239 ms | 0.49× |
-| posteriordb | dugongs | Float32 | ForwardDiff | 52.345 ms | — | — |
-| posteriordb | dugongs | Float64 | ForwardDiff | 50.196 ms | 52.497 ms | 0.96× |
-| posteriordb | earn_height | Float32 | ForwardDiff | 135.879 ms | — | — |
-| posteriordb | earn_height | Float64 | ForwardDiff | 132.169 ms | — | — |
-| posteriordb | eight_schools_centered | Float32 | ForwardDiff | 2.568 ms | — | — |
-| posteriordb | eight_schools_centered | Float64 | ForwardDiff | 1.483 ms | 6.487 ms | 0.23× |
-| posteriordb | eight_schools_noncentered | Float32 | ForwardDiff | 1.829 ms | — | — |
-| posteriordb | eight_schools_noncentered | Float64 | ForwardDiff | 2.785 ms | — | — |
-| posteriordb | kidscore_interaction | Float32 | ForwardDiff | 201.319 ms | — | — |
-| posteriordb | kidscore_interaction | Float64 | ForwardDiff | 142.651 ms | 136.082 ms | 1.05× |
-| posteriordb | log10earn_height | Float32 | ForwardDiff | 1.318 ms | — | — |
-| posteriordb | log10earn_height | Float64 | ForwardDiff | 1.322 ms | — | — |
-| posteriordb | logearn_height_male | Float32 | ForwardDiff | 1.482 ms | — | — |
-| posteriordb | logearn_height_male | Float64 | ForwardDiff | 1.422 ms | — | — |
-| posteriordb | logearn_interaction | Float32 | ForwardDiff | 1.6 ms | — | — |
-| posteriordb | logearn_interaction | Float64 | ForwardDiff | 1.564 ms | — | — |
-| posteriordb | logearn_interaction_z | Float32 | ForwardDiff | 2.593 ms | — | — |
-| posteriordb | logearn_interaction_z | Float64 | ForwardDiff | 2.06 ms | — | — |
-| posteriordb | logearn_logheight_male | Float32 | ForwardDiff | 2.102 ms | — | — |
-| posteriordb | logearn_logheight_male | Float64 | ForwardDiff | 2.467 ms | — | — |
-| posteriordb | logistic_regression_rhs | Float32 | ForwardDiff | 17.979 ms | — | — |
-| posteriordb | logistic_regression_rhs | Float64 | ForwardDiff | 17.033 ms | 26.022 ms | 0.65× |
-| posteriordb | logmesquite | Float32 | ForwardDiff | 6.133 ms | — | — |
-| posteriordb | logmesquite | Float64 | ForwardDiff | 5.153 ms | — | — |
-| posteriordb | logmesquite_logva | Float32 | ForwardDiff | 1.863 ms | — | — |
-| posteriordb | logmesquite_logva | Float64 | ForwardDiff | 2.539 ms | — | — |
-| posteriordb | logmesquite_logvas | Float32 | ForwardDiff | 3.71 ms | — | — |
-| posteriordb | logmesquite_logvas | Float64 | ForwardDiff | 3.184 ms | — | — |
-| posteriordb | logmesquite_logvash | Float32 | ForwardDiff | 2.833 ms | — | — |
-| posteriordb | logmesquite_logvash | Float64 | ForwardDiff | 3.038 ms | — | — |
-| posteriordb | logmesquite_logvolume | Float32 | ForwardDiff | 1.955 ms | — | — |
-| posteriordb | logmesquite_logvolume | Float64 | ForwardDiff | 1.71 ms | — | — |
-| posteriordb | mesquite | Float32 | ForwardDiff | 2.767 ms | — | — |
-| posteriordb | mesquite | Float64 | ForwardDiff | 5.899 ms | — | — |
-| posteriordb | nes | Float32 | ForwardDiff | 15.381 ms | — | — |
-| posteriordb | nes | Float64 | ForwardDiff | 12.519 ms | — | — |
-| posteriordb | pilots | Float32 | ForwardDiff | 31.922 ms | — | — |
-| posteriordb | pilots | Float64 | ForwardDiff | 79.659 ms | 214.04 ms | 0.37× |
-| posteriordb | radon_county | Float32 | ForwardDiff | 1.637 ms | — | — |
-| posteriordb | radon_county | Float64 | ForwardDiff | 2.268 ms | — | — |
-| posteriordb | radon_county_intercept | Float32 | ForwardDiff | 2.724 ms | — | — |
-| posteriordb | radon_county_intercept | Float64 | ForwardDiff | 5.779 ms | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float32 | ForwardDiff | 456.882 ms | — | — |
-| posteriordb | radon_hierarchical_intercept_centered | Float64 | ForwardDiff | 809.656 ms | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float32 | ForwardDiff | 2439.27 ms | — | — |
-| posteriordb | radon_hierarchical_intercept_noncentered | Float64 | ForwardDiff | 1868.434 ms | — | — |
-| posteriordb | radon_partially_pooled_centered | Float32 | ForwardDiff | 2.177 ms | — | — |
-| posteriordb | radon_partially_pooled_centered | Float64 | ForwardDiff | 2.41 ms | — | — |
-| posteriordb | radon_pooled | Float32 | ForwardDiff | 1.832 ms | — | — |
-| posteriordb | radon_pooled | Float64 | ForwardDiff | 1.249 ms | — | — |
-| posteriordb | radon_variable_intercept_centered | Float32 | ForwardDiff | 4.204 ms | — | — |
-| posteriordb | radon_variable_intercept_centered | Float64 | ForwardDiff | 3.814 ms | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float32 | ForwardDiff | 11.032 ms | — | — |
-| posteriordb | radon_variable_intercept_noncentered | Float64 | ForwardDiff | 2.916 ms | — | — |
-| posteriordb | radon_variable_intercept_slope_centered | Float32 | ForwardDiff | 7.22 ms | — | — |
-| posteriordb | radon_variable_intercept_slope_centered | Float64 | ForwardDiff | 9.42 ms | 68.644 ms | 0.14× |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float32 | ForwardDiff | 29.12 ms | — | — |
-| posteriordb | radon_variable_intercept_slope_noncentered | Float64 | ForwardDiff | 45.214 ms | — | — |
-| posteriordb | radon_variable_slope_centered | Float32 | ForwardDiff | 7.446 ms | — | — |
-| posteriordb | radon_variable_slope_centered | Float64 | ForwardDiff | 4.999 ms | — | — |
-| posteriordb | rats | Float32 | ForwardDiff | 376.195 ms | — | — |
-| posteriordb | rats | Float64 | ForwardDiff | 399.087 ms | 184.575 ms | 2.16× |
-| posteriordb | seeds | Float32 | ForwardDiff | 14.452 ms | — | — |
-| posteriordb | seeds | Float64 | ForwardDiff | 15.528 ms | 138.318 ms | 0.11× |
-| posteriordb | seeds_centered | Float32 | ForwardDiff | 10.615 ms | — | — |
-| posteriordb | seeds_centered | Float64 | ForwardDiff | 17.974 ms | — | — |
-| posteriordb | seeds_stanified | Float32 | ForwardDiff | 10.265 ms | — | — |
-| posteriordb | seeds_stanified | Float64 | ForwardDiff | 18.145 ms | — | — |
-| posteriordb | sesame_one_pred_a | Float32 | ForwardDiff | 7.869 ms | — | — |
-| posteriordb | sesame_one_pred_a | Float64 | ForwardDiff | 8.837 ms | — | — |
-| posteriordb | surgical_model | Float32 | ForwardDiff | 8.86 ms | — | — |
-| posteriordb | surgical_model | Float64 | ForwardDiff | 4.844 ms | — | — |
-| posteriordb | wells_daae_c | Float32 | ForwardDiff | 12.311 ms | — | — |
-| posteriordb | wells_daae_c | Float64 | ForwardDiff | 11.197 ms | — | — |
-| posteriordb | wells_dae | Float32 | ForwardDiff | 16.377 ms | — | — |
-| posteriordb | wells_dae | Float64 | ForwardDiff | 11.321 ms | 19.913 ms | 0.57× |
-| posteriordb | wells_dae_c | Float32 | ForwardDiff | 7.274 ms | — | — |
-| posteriordb | wells_dae_c | Float64 | ForwardDiff | 10.477 ms | — | — |
-| posteriordb | wells_dae_inter | Float32 | ForwardDiff | 9.727 ms | — | — |
-| posteriordb | wells_dae_inter | Float64 | ForwardDiff | 15.343 ms | — | — |
-| posteriordb | wells_dist | Float32 | ForwardDiff | 26.79 ms | — | — |
-| posteriordb | wells_dist | Float64 | ForwardDiff | 2.014 ms | — | — |
-| posteriordb | wells_dist100 | Float32 | ForwardDiff | 1.738 ms | — | — |
-| posteriordb | wells_dist100 | Float64 | ForwardDiff | 1.798 ms | — | — |
-| posteriordb | wells_dist100ars | Float32 | ForwardDiff | 5.686 ms | — | — |
-| posteriordb | wells_dist100ars | Float64 | ForwardDiff | 10.813 ms | — | — |
-| posteriordb | wells_interaction | Float32 | ForwardDiff | 33.796 ms | — | — |
-| posteriordb | wells_interaction | Float64 | ForwardDiff | 12.104 ms | — | — |
-| posteriordb | wells_interaction_c | Float32 | ForwardDiff | 5.143 ms | — | — |
-| posteriordb | wells_interaction_c | Float64 | ForwardDiff | 4.723 ms | — | — |
-| tutorials | bayesian-linear-regression | Float32 | ForwardDiff | 2.008 ms | — | — |
-| tutorials | bayesian-linear-regression | Float64 | ForwardDiff | 1.151 ms | 4.541 ms | 0.25× |
-| tutorials | bayesian-logistic-regression | Float32 | ForwardDiff | 1.347 ms | — | — |
-| tutorials | bayesian-logistic-regression | Float64 | ForwardDiff | 1.204 ms | 5.392 ms | 0.22× |
-| tutorials | bayesian-poisson-regression | Float32 | ForwardDiff | 2.217 ms | — | — |
-| tutorials | bayesian-poisson-regression | Float64 | ForwardDiff | 27.044 ms | 11.227 ms | 2.41× |
-| tutorials | bayesian-time-series-analysis | Float32 | ForwardDiff | 908.195 ms | — | — |
-| tutorials | bayesian-time-series-analysis | Float64 | ForwardDiff | 947.478 ms | — | — |
-| tutorials | coin-flipping | Float32 | ForwardDiff | 894.4 µs | — | — |
-| tutorials | coin-flipping | Float64 | ForwardDiff | 1.385 ms | 2.665 ms | 0.52× |
-| tutorials | multinomial-logistic-regression | Float32 | ForwardDiff | 10.234 ms | — | — |
-| tutorials | multinomial-logistic-regression | Float64 | ForwardDiff | 11.979 ms | 34.397 ms | 0.35× |
-| tutorials | probabilistic-pca | Float32 | ForwardDiff | 99.731 ms | — | — |
-| tutorials | probabilistic-pca | Float64 | ForwardDiff | 115.811 ms | 333.236 ms | 0.35× |
+| Corpus | Model | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| posteriordb | GLM_Poisson | ForwardDiff | 57.869 ms | 69.232 ms | 10.033 ms | 1.2× | 5.77× | 6.9× |
+| posteriordb | Rate_1 | ForwardDiff | 4.853 ms | 5.451 ms | 2.52 ms | 1.12× | 1.93× | 2.16× |
+| posteriordb | blr | ForwardDiff | 18.681 ms | 43.012 ms | 4.239 ms | 2.3× | 4.41× | 10.15× |
+| posteriordb | dugongs | ForwardDiff | 441.742 ms | 425.916 ms | 52.497 ms | 0.96× | 8.41× | 8.11× |
+| posteriordb | earn_height | ForwardDiff | 132.169 ms | 135.879 ms | — | 1.03× | — | — |
+| posteriordb | eight_schools_centered | ForwardDiff | 67.309 ms | 56.223 ms | 6.487 ms | 0.84× | 10.38× | 8.67× |
+| posteriordb | eight_schools_noncentered | ForwardDiff | 69.388 ms | 187.121 ms | — | 2.7× | — | — |
+| posteriordb | kidscore_interaction | ForwardDiff | 142.651 ms | 201.319 ms | 136.082 ms | 1.41× | 1.05× | 1.48× |
+| posteriordb | log10earn_height | ForwardDiff | 1.322 ms | 1.318 ms | — | 1.0× | — | — |
+| posteriordb | logearn_height_male | ForwardDiff | 1.422 ms | 1.482 ms | — | 1.04× | — | — |
+| posteriordb | logearn_interaction | ForwardDiff | 1.564 ms | 1.6 ms | — | 1.02× | — | — |
+| posteriordb | logearn_interaction_z | ForwardDiff | 2.06 ms | 2.593 ms | — | 1.26× | — | — |
+| posteriordb | logearn_logheight_male | ForwardDiff | 2.467 ms | 2.102 ms | — | 0.85× | — | — |
+| posteriordb | logistic_regression_rhs | ForwardDiff | 17.033 ms | 17.979 ms | 26.022 ms | 1.06× | 0.65× | 0.69× |
+| posteriordb | logmesquite | ForwardDiff | 5.153 ms | 6.133 ms | — | 1.19× | — | — |
+| posteriordb | logmesquite_logva | ForwardDiff | 2.539 ms | 1.863 ms | — | 0.73× | — | — |
+| posteriordb | logmesquite_logvas | ForwardDiff | 3.184 ms | 3.71 ms | — | 1.17× | — | — |
+| posteriordb | logmesquite_logvash | ForwardDiff | 3.038 ms | 2.833 ms | — | 0.93× | — | — |
+| posteriordb | logmesquite_logvolume | ForwardDiff | 1.71 ms | 1.955 ms | — | 1.14× | — | — |
+| posteriordb | mesquite | ForwardDiff | 5.899 ms | 2.767 ms | — | 0.47× | — | — |
+| posteriordb | nes | ForwardDiff | 12.519 ms | 15.381 ms | — | 1.23× | — | — |
+| posteriordb | pilots | ForwardDiff | 79.659 ms | 31.922 ms | 214.04 ms | 0.4× | 0.37× | 0.15× |
+| posteriordb | radon_county | ForwardDiff | 2.268 ms | 1.637 ms | — | 0.72× | — | — |
+| posteriordb | radon_county_intercept | ForwardDiff | 5.779 ms | 2.724 ms | — | 0.47× | — | — |
+| posteriordb | radon_hierarchical_intercept_centered | ForwardDiff | 809.656 ms | 456.882 ms | — | 0.56× | — | — |
+| posteriordb | radon_hierarchical_intercept_noncentered | ForwardDiff | 1868.434 ms | 2439.27 ms | — | 1.31× | — | — |
+| posteriordb | radon_partially_pooled_centered | ForwardDiff | 2.41 ms | 2.177 ms | — | 0.9× | — | — |
+| posteriordb | radon_pooled | ForwardDiff | 1.249 ms | 1.832 ms | — | 1.47× | — | — |
+| posteriordb | radon_variable_intercept_centered | ForwardDiff | 3.814 ms | 4.204 ms | — | 1.1× | — | — |
+| posteriordb | radon_variable_intercept_noncentered | ForwardDiff | 2.916 ms | 11.032 ms | — | 3.78× | — | — |
+| posteriordb | radon_variable_intercept_slope_centered | ForwardDiff | 9.42 ms | 7.22 ms | 68.644 ms | 0.77× | 0.14× | 0.11× |
+| posteriordb | radon_variable_intercept_slope_noncentered | ForwardDiff | 45.214 ms | 29.12 ms | — | 0.64× | — | — |
+| posteriordb | radon_variable_slope_centered | ForwardDiff | 4.999 ms | 7.446 ms | — | 1.49× | — | — |
+| posteriordb | rats | ForwardDiff | 399.087 ms | 376.195 ms | 184.575 ms | 0.94× | 2.16× | 2.04× |
+| posteriordb | seeds | ForwardDiff | 15.528 ms | 14.452 ms | 138.318 ms | 0.93× | 0.11× | 0.1× |
+| posteriordb | seeds_centered | ForwardDiff | 17.974 ms | 10.615 ms | — | 0.59× | — | — |
+| posteriordb | seeds_stanified | ForwardDiff | 18.145 ms | 10.265 ms | — | 0.57× | — | — |
+| posteriordb | sesame_one_pred_a | ForwardDiff | 8.837 ms | 7.869 ms | — | 0.89× | — | — |
+| posteriordb | surgical_model | ForwardDiff | 4.844 ms | 8.86 ms | — | 1.83× | — | — |
+| posteriordb | wells_daae_c | ForwardDiff | 11.197 ms | 12.311 ms | — | 1.1× | — | — |
+| posteriordb | wells_dae | ForwardDiff | 11.321 ms | 16.377 ms | 19.913 ms | 1.45× | 0.57× | 0.82× |
+| posteriordb | wells_dae_c | ForwardDiff | 10.477 ms | 7.274 ms | — | 0.69× | — | — |
+| posteriordb | wells_dae_inter | ForwardDiff | 15.343 ms | 9.727 ms | — | 0.63× | — | — |
+| posteriordb | wells_dist | ForwardDiff | 2.014 ms | 26.79 ms | — | 13.3× | — | — |
+| posteriordb | wells_dist100 | ForwardDiff | 1.798 ms | 1.738 ms | — | 0.97× | — | — |
+| posteriordb | wells_dist100ars | ForwardDiff | 10.813 ms | 5.686 ms | — | 0.53× | — | — |
+| posteriordb | wells_interaction | ForwardDiff | 12.104 ms | 33.796 ms | — | 2.79× | — | — |
+| posteriordb | wells_interaction_c | ForwardDiff | 4.723 ms | 5.143 ms | — | 1.09× | — | — |
+| tutorials | bayesian-linear-regression | ForwardDiff | 1.151 ms | 2.008 ms | 4.541 ms | 1.74× | 0.25× | 0.44× |
+| tutorials | bayesian-logistic-regression | ForwardDiff | 1.204 ms | 1.347 ms | 5.392 ms | 1.12× | 0.22× | 0.25× |
+| tutorials | bayesian-poisson-regression | ForwardDiff | 27.044 ms | 2.217 ms | 11.227 ms | 0.08× | 2.41× | 0.2× |
+| tutorials | bayesian-time-series-analysis | ForwardDiff | 947.478 ms | 908.195 ms | — | 0.96× | — | — |
+| tutorials | coin-flipping | ForwardDiff | 1.385 ms | 894.4 µs | 2.665 ms | 0.65× | 0.52× | 0.34× |
+| tutorials | multinomial-logistic-regression | ForwardDiff | 11.979 ms | 10.234 ms | 34.397 ms | 0.85× | 0.35× | 0.3× |
+| tutorials | probabilistic-pca | ForwardDiff | 115.811 ms | 99.731 ms | 333.236 ms | 0.86× | 0.35× | 0.3× |
 
 ## Reproducing
 

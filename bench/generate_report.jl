@@ -138,7 +138,12 @@ else
     println(io)
 
     # -----------------------------------------------------------------
-    # Section: latest snapshot, one table per layer, PB vs Turing side by side
+    # Section: latest snapshot, one table per layer. One ROW per
+    # (model, shape, backend) with PB-Float64, PB-Float32, and Turing (always
+    # Float64 — Turing/DynamicPPL promotes internally regardless of literal
+    # precision, confirmed elsewhere in this repo) as separate COLUMNS, so
+    # the Float32-vs-Float64-vs-Turing comparison is readable at a glance in
+    # one row instead of scattered across separate rows.
     # -----------------------------------------------------------------
     println(io, "## Latest snapshot")
     println(io)
@@ -147,23 +152,22 @@ else
     for layer in layers_present
         println(io, "### Layer: `", layer, "`")
         println(io)
-        println(io, "| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |")
-        println(io, "|---|---|---|---|---:|---:|---:|---:|---:|")
-        pb_keys = sort(collect(k for k in keys(pb_latest) if k[1] == layer))
-        for k in pb_keys
-            pb_r = pb_latest[k]
-            t_r = get(turing_latest, k, nothing)
-            model, shape, precision, backend = k[2], k[3], k[4], k[5]
-            pb_first = _fmt_s(pb_r["first_call_s"])
-            pb_med = _fmt_s(pb_r["median_s"])
-            if t_r === nothing
-                t_first, t_med, ratio = "—", "—", "—"
-            else
-                t_first = _fmt_s(t_r["first_call_s"])
-                t_med = _fmt_s(t_r["median_s"])
-                ratio = string(round(pb_r["median_s"] / t_r["median_s"]; digits=2), "×")
-            end
-            println(io, "| ", model, " | ", shape, " | ", precision, " | ", backend, " | ", pb_first, " | ", pb_med, " | ", t_first, " | ", t_med, " | ", ratio, " |")
+        println(io, "| Model | Shape | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |")
+        println(io, "|---|---|---|---:|---:|---:|---:|---:|---:|")
+        row_keys = sort(unique((k[2], k[3], k[5]) for k in keys(pb_latest) if k[1] == layer))
+        for (model, shape, backend) in row_keys
+            k64 = (layer, model, shape, "Float64", backend)
+            k32 = (layer, model, shape, "Float32", backend)
+            r64 = get(pb_latest, k64, nothing)
+            r32 = get(pb_latest, k32, nothing)
+            t_r = get(turing_latest, k64, nothing)  # Turing side is always run at "Float64" precision label
+            pb64 = r64 === nothing ? "—" : _fmt_s(r64["median_s"])
+            pb32 = r32 === nothing ? "—" : _fmt_s(r32["median_s"])
+            t_med = t_r === nothing ? "—" : _fmt_s(t_r["median_s"])
+            f32_vs_f64 = (r64 !== nothing && r32 !== nothing) ? string(round(r32["median_s"] / r64["median_s"]; digits=2), "×") : "—"
+            pb64_vs_t = (r64 !== nothing && t_r !== nothing) ? string(round(r64["median_s"] / t_r["median_s"]; digits=2), "×") : "—"
+            pb32_vs_t = (r32 !== nothing && t_r !== nothing) ? string(round(r32["median_s"] / t_r["median_s"]; digits=2), "×") : "—"
+            println(io, "| ", model, " | ", shape, " | ", backend, " | ", pb64, " | ", pb32, " | ", t_med, " | ", f32_vs_f64, " | ", pb64_vs_t, " | ", pb32_vs_t, " |")
         end
         println(io)
     end
@@ -232,27 +236,28 @@ if !isempty(pb_corpus)
         println(io, "Latest Turing corpus run (representative subset): **", latest_turing_corpus_run["timestamp"], "**, commit `", _fmt_commit(latest_turing_corpus_run["commit"]), "`, ", length(unique(r["model"] for r in turing_corpus)), " distinct models.")
     end
     println(io)
-    println(io, "Every model in `bench/corpus/posteriordb/` and `bench/corpus/tutorials/` (see `bench/corpus_bench.jl`), across every AD backend available in the benchmarking environment, Float64 and Float32, on three layers (logdensity, gradient, a short NUTS run). Turing only covers a representative subset (~20 models spanning each structural family — porting all ~53 to Turing as well was judged not worth the effort vs. the coverage gained). Enzyme is excluded from this sweep: across this many structurally varied models it produced an uncatchable crash that killed a full benchmark run outright (see `bench/corpus_bench.jl`'s comment) — it remains in `bench/suite.jl`'s smaller hand-picked sweep, where it's known to behave.")
+    println(io, "Every model in `bench/corpus/posteriordb/` and `bench/corpus/tutorials/` (see `bench/corpus_bench.jl`), across ForwardDiff/Mooncake/Enzyme (ReverseDiff dropped — redundant with Mooncake), Float64 and Float32, on three layers (logdensity, gradient, a 1000-sample NUTS run). Turing only covers a representative subset (~20 models spanning each structural family — porting all ~55 to Turing as well was judged not worth the effort vs. the coverage gained). Each model runs in its own subprocess (`bench/corpus_bench_worker.jl`), so one model crashing (Enzyme has genuinely done this on certain type combinations) only loses that model's results, not the whole sweep.")
     println(io)
 
     for layer in ("logdensity", "gradient", "nuts")
         println(io, "### Corpus layer: `", layer, "`")
         println(io)
-        println(io, "| Corpus | Model | Precision | Backend | PB median | Turing median | PB/Turing |")
-        println(io, "|---|---|---|---|---:|---:|---:|")
-        ks = sort(collect(k for k in keys(pb_corpus_latest) if k[3] == layer))
-        for k in ks
-            pb_r = pb_corpus_latest[k]
-            t_r = get(turing_corpus_latest, k, nothing)
-            corpus, model, _, precision, backend = k
-            pb_med = _fmt_s(pb_r["median_s"])
-            if t_r === nothing
-                t_med, ratio = "—", "—"
-            else
-                t_med = _fmt_s(t_r["median_s"])
-                ratio = pb_r["median_s"] > 0 && t_r["median_s"] > 0 ? string(round(pb_r["median_s"] / t_r["median_s"]; digits=2), "×") : "—"
-            end
-            println(io, "| ", corpus, " | ", model, " | ", precision, " | ", backend, " | ", pb_med, " | ", t_med, " | ", ratio, " |")
+        println(io, "| Corpus | Model | Backend | PB Float64 | PB Float32 | Turing | F32/F64 | PB(F64)/Turing | PB(F32)/Turing |")
+        println(io, "|---|---|---|---:|---:|---:|---:|---:|---:|")
+        row_keys = sort(unique((k[1], k[2], k[5]) for k in keys(pb_corpus_latest) if k[3] == layer))
+        for (corpus, model, backend) in row_keys
+            k64 = (corpus, model, layer, "Float64", backend)
+            k32 = (corpus, model, layer, "Float32", backend)
+            r64 = get(pb_corpus_latest, k64, nothing)
+            r32 = get(pb_corpus_latest, k32, nothing)
+            t_r = get(turing_corpus_latest, k64, nothing)
+            pb64 = r64 === nothing ? "—" : _fmt_s(r64["median_s"])
+            pb32 = r32 === nothing ? "—" : _fmt_s(r32["median_s"])
+            t_med = t_r === nothing ? "—" : _fmt_s(t_r["median_s"])
+            f32_vs_f64 = (r64 !== nothing && r32 !== nothing && r64["median_s"] > 0) ? string(round(r32["median_s"] / r64["median_s"]; digits=2), "×") : "—"
+            pb64_vs_t = (r64 !== nothing && t_r !== nothing && t_r["median_s"] > 0) ? string(round(r64["median_s"] / t_r["median_s"]; digits=2), "×") : "—"
+            pb32_vs_t = (r32 !== nothing && t_r !== nothing && t_r["median_s"] > 0) ? string(round(r32["median_s"] / t_r["median_s"]; digits=2), "×") : "—"
+            println(io, "| ", corpus, " | ", model, " | ", backend, " | ", pb64, " | ", pb32, " | ", t_med, " | ", f32_vs_f64, " | ", pb64_vs_t, " | ", pb32_vs_t, " |")
         end
         println(io)
     end

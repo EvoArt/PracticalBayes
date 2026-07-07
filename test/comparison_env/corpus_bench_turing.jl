@@ -108,19 +108,23 @@ if !isnothing(Base.find_package("Mooncake"))
     @eval import Mooncake
     push!(_AD_BACKENDS, "Mooncake" => AutoMooncake(; config=nothing))
 end
-if !isnothing(Base.find_package("ReverseDiff"))
-    @eval import ReverseDiff
-    push!(_AD_BACKENDS, "ReverseDiff" => AutoReverseDiff())
+# ReverseDiff dropped per user request — redundant with Mooncake (both
+# reverse-mode; Mooncake is the actively-developed one this package's own
+# test suite already leans on).
+if !isnothing(Base.find_package("Enzyme"))
+    @eval import Enzyme
+    # `set_runtime_activity` — see bench/corpus_bench_worker.jl's matching
+    # comment: bare `AutoEnzyme()` defaults to runtime-activity analysis OFF,
+    # which is the direct cause of most `EnzymeRuntimeActivityError` failures
+    # seen on the PracticalBayes side (a constant/store value flowing into a
+    # differentiable computation). Only 20 models here (vs 55 on the
+    # PracticalBayes side), all statically defined at file-load time (no
+    # dynamic `include`/world-age concerns), so this file is NOT split into
+    # a subprocess-per-model driver — if Enzyme crashes here too, that's
+    # itself useful information (would suggest the crash is Enzyme-general,
+    # not specific to PracticalBayes' generated code).
+    push!(_AD_BACKENDS, "Enzyme" => AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse)))
 end
-# Enzyme deliberately excluded — see bench/corpus_bench.jl's matching
-# comment: across this many structurally varied models it produced a
-# native-crash-level failure that killed the whole benchmark process, on
-# top of several safely-caught EnzymeRuntimeActivityError/
-# IllegalTypeAnalysisException failures on other models.
-# if !isnothing(Base.find_package("Enzyme"))
-#     @eval import Enzyme
-#     push!(_AD_BACKENDS, "Enzyme" => AutoEnzyme())
-# end
 
 # ===========================================================================
 # Model definitions — 20 representative models, one (or two) per structural
@@ -544,7 +548,7 @@ const MODELS = [
     ("tutorials", "probabilistic-pca", () -> pPCA(make_pPCA_data()...), Dict{Symbol,Any}()),
 ]
 
-function bench_one_model(corpus, name, modelfn; reps=8, nuts_samples=50, nuts_reps=3)
+function bench_one_model(corpus, name, modelfn; reps=8, nuts_samples=500)
     for T in (Float64,)  # Turing/DynamicPPL promotes to Float64 internally regardless (documented elsewhere in this repo) — Float32 sweep is not meaningful here
         local model, vi
         try
@@ -574,8 +578,14 @@ function bench_one_model(corpus, name, modelfn; reps=8, nuts_samples=50, nuts_re
         end
 
         try
-            run() = Turing.sample(Random.Xoshiro(1), model, Turing.NUTS(0.8), nuts_samples; progress=false)
-            r = time_reps(run, "$corpus/$name NUTS ($T)"; reps=nuts_reps)
+            # Same "1 short compile chain (untimed) + 1 timed chain at the
+            # real sample count" pattern as bench/corpus_bench_worker.jl —
+            # see that file's comment for why multiple full-length reps
+            # aren't worth the wall-clock cost at this sample count/model count.
+            Turing.sample(Random.Xoshiro(1), model, Turing.NUTS(0.8), 20; progress=false)
+            first_call_s = @elapsed Turing.sample(Random.Xoshiro(1), model, Turing.NUTS(0.8), nuts_samples; progress=false)
+            t = @elapsed Turing.sample(Random.Xoshiro(2), model, Turing.NUTS(0.8), nuts_samples; progress=false)
+            r = TimingResult("NUTS ($T)", first_call_s, t, t, t, 0.0, 1)
             record!(; corpus, model=name, layer="nuts", precision=string(T), backend="ForwardDiff", r)
         catch e
             println(rpad("$corpus/$name", 40), "  [$T] NUTS FAILED — ", _trunc_err(e))

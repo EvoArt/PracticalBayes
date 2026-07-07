@@ -264,7 +264,7 @@ end
 # finding above).
 # ===========================================================================
 
-function bench_turing_nuts(T, n; n_samples=200, reps=5)
+function bench_turing_nuts(T, n; n_samples=1000, reps=5)
     rng_local = StableRNG(n + (T == Float32 ? 1 : 0) + 300)
     y = T.(randn(rng_local, n))
     model = density_model(T, y)

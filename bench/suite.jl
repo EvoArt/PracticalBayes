@@ -342,7 +342,7 @@ end
 # is an AdvancedHMC requirement, not something this package controls).
 # ===========================================================================
 
-function bench_nuts(::Type{T}, n; n_samples=200, reps=5) where {T<:Real}
+function bench_nuts(::Type{T}, n; n_samples=1000, reps=5) where {T<:Real}
     y = make_data(T, n, 3)
     m = n <= 100 ? tiny_model(y) : large_model(y)
     layout, θ0, store0 = build_layout(m; T=T)

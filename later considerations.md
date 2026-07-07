@@ -15,3 +15,13 @@ Build a brms type layer on top (separate package) with a load of tutorials and s
 Do statistical rethinking, BDA3
 
 Figure out how to combine with Reactant.jl
+
+plotting, prior and posterior predictive vs data.
+
+loglik (tracked optionally) for psisloo etc.
+
+interface with arviz - save in arviz format.
+
+default to pretty printing results. maybe similar to mcelreath package.
+
+residual analysis and plots.

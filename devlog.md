@@ -1,4 +1,143 @@
-## 2026-07-07 (latest) — corpus-wide benchmark: every model, every AD backend, both precisions, PB vs Turing
+## 2026-07-07 (latest) — NUTS methodology fix, Enzyme re-enabled with subprocess isolation, report/heatmap redesign
+
+Follow-up to the corpus-wide benchmark entry below, triggered by the user
+noticing `normal/large` NUTS had apparently gotten slower than Turing between
+two runs.
+
+### False regression: unplugged laptop, not a code issue
+
+Investigated via `git log`/diff between the two benchmark commits — none of
+the commits in between touched any hot-path file (`src/tilde.jl`,
+`src/logdensity.jl`, etc.), all were model-porting/distribution additions.
+Root cause turned out to be simpler: the user's laptop was unplugged during
+the second run (thermal/power throttling), confirmed directly by the user
+rather than inferred. No code change resulted from this — noted here so a
+future apparent regression isn't re-investigated from scratch without first
+checking power state.
+
+### NUTS benchmark methodology: single compile chain + one timed 500-sample chain
+
+Prior methodology ran multiple full NUTS chains per config and averaged
+(`nuts_reps`), at only 200 samples — raised whether this was dominated by
+adaptation/warmup rather than steady-state inference. Proposed reporting both
+"full run" and "steady-state-only" timings; user rejected this as
+overcomplicated ("so long as turing and pb are doing the same thing, it's
+fine"), asking instead for 1000 samples everywhere for realism. Given the
+corpus is 55 PB models × 2 precisions × 3 AD backends (plus ~20 Turing
+models), full multi-rep chains at 1000 samples each was impractical —
+resolved via a follow-up ask: one short untimed chain (20-100 samples) purely
+to force JIT compilation, then a single timed chain at the real sample count
+(500, not 1000 — chosen as a practical compromise once framed as "compile
+once, time once" rather than "average over many reps"). Applied identically
+to `bench/corpus_bench_worker.jl`'s `bench_nuts` and
+`test/comparison_env/corpus_bench_turing.jl`'s NUTS timing block, and to the
+two small hand-picked-model benchmarks (`bench/suite.jl`,
+`test/comparison_env/generate_turing_reference.jl`) which moved to
+`n_samples=1000` (kept `reps=5` there since only 4 total NUTS calls in that
+file's small shape matrix — no need for the compile/time split at that
+scale).
+
+### Enzyme re-enabled, ReverseDiff dropped
+
+User: "we dont need reversediff. drop it. enzyme would be great though, why
+did we drop it?" Re-examined the earlier Enzyme exclusion (see corpus-wide
+benchmark entry below): every INDIVIDUAL Enzyme failure across the corpus had
+actually been caught and printed cleanly by the existing try/catch — only one
+full-sweep process death was ever unexplained (no Julia stack trace, process
+just gone), and that run also happened during the same unplugged-laptop
+period, so it's plausibly power/thermal, not Enzyme-specific. Resolution
+(user's choice after being asked): re-enable Enzyme, but add subprocess
+isolation first so any future crash — Enzyme-caused or not — only loses one
+model's results, not a multi-hour sweep.
+
+**Subprocess isolation**: `bench/corpus_bench.jl` split into a thin driver
+(discovers model names per corpus file, no model construction) that spawns
+one `julia --project=bench/bench_env corpus_bench_worker.jl <file> <name>
+<corpus>` subprocess per model; the new `bench/corpus_bench_worker.jl`
+contains all the actual benchmarking logic (previously in `corpus_bench.jl`
+directly) and appends its own results to `history_corpus.jsonl` before
+exiting, so a crashed model's siblings are unaffected and already-completed
+results are safely on disk regardless of what happens later in the sweep.
+
+**Enzyme runtime activity**: user asked directly ("are we setting enzyme
+runtimeactivity in it ADType?") — checked and confirmed bare `AutoEnzyme()`
+defaults to runtime-activity analysis OFF, which is the direct, confirmed
+cause of the `EnzymeRuntimeActivityError: Detected potential need for
+runtime activity` failures seen on several models (any model where a
+constant/store value flows into a differentiable computation — latents,
+`:=`-computed quantities feeding an observe). Fixed with `AutoEnzyme(;
+mode=Enzyme.set_runtime_activity(Enzyme.Reverse))` in both
+`corpus_bench_worker.jl` and `corpus_bench_turing.jl`. Does NOT fix the
+separate `IllegalTypeAnalysisException`/`EnzymeNoTypeError` failures on a
+few other models (genuine Union types hitting Enzyme's static type analysis
+— a different root cause).
+
+**ReverseDiff dropped** from both AD-backend lists (redundant with
+Mooncake — both reverse-mode, Mooncake is the one this package's own test
+suite already leans on).
+
+### Report redesign: PB-Float64/PB-Float32/Turing on one row
+
+User: "in a given row of the report lets have the pb float32, pb float64 and
+turing timing on the same row. I want to see if float32 lets us beat turing."
+Previously the corpus report table was keyed by precision (separate row per
+Float64/Float32), making a Float32-vs-Turing comparison require
+cross-referencing two tables. `bench/generate_report.jl`'s corpus section
+rewritten to one row per `(corpus, model, backend)` within each layer, with
+columns for PB Float64, PB Float32, Turing, plus three ratio columns
+(F32/F64, PB-F64/Turing, PB-F32/Turing) — the last two directly answer the
+user's question in one glance per row.
+
+### New: `bench/generate_heatmap.jl` — interactive ratio heatmap
+
+User: "each model on the y axis, each column a different comparison vs
+turing (logdensity/gradient/nuts), diverging colormap, actual ratio rounded
+to one decimal in the cell." New standalone script producing a self-contained
+`bench/heatmap.html` (two panels — PB-Float64-vs-Turing and
+PB-Float32-vs-Turing — sticky headers/first column, light+dark theme via CSS
+custom properties + `prefers-color-scheme`/`data-theme` override per the
+artifact-design skill's guidance, log-scaled diverging color from neutral
+gray through green (PB faster) or red (Turing faster), clamped at ±1 decade
+for saturation).
+
+Hit a real Julia gotcha while writing it: the HTML template was originally a
+normal `"""..."""` string (Julia-interpolating), but it embeds JavaScript
+containing literal template-literal syntax (`` `hsl(...,${expr}%,...)` ``) —
+Julia's parser tried to interpret every `${...}` as its own string
+interpolation, producing 5 parse errors. Fixed by switching the template to
+`raw"""..."""` (zero Julia interpolation) and injecting the actual JSON data
+via a plain string `replace` of a placeholder token (`__DATA_JSON__`) after
+the raw string is captured, rather than any form of interpolation.
+
+### New: `bench/run_all.ps1`
+
+User wanted to run benchmarks themselves from a plain PowerShell window
+(VSCode's integrated terminal consumes RAM this machine can't spare during a
+multi-hour benchmark sweep) rather than have them run in an agent-driven
+background process. Small wrapper script: runs the Turing-side benchmark
+(`test/comparison_env/corpus_bench_turing.jl`) to completion first, then the
+PB-side corpus sweep (`bench/corpus_bench.jl`) — sequential because both
+independently append to the same `history_corpus.jsonl` and running them
+concurrently would interleave writes for no benefit (they don't share
+Julia processes anyway, each already pays its own environment-load cost).
+
+### Current data state: partial, not a full re-run
+
+As of this entry, only 6 of 55 PB corpus models (`GLM_Poisson`, `Rate_1`,
+`blr`, `dugongs`, `eight_schools_centered`, `eight_schools_noncentered`) have
+fresh results under the new methodology (single-compile+500-sample-timed
+NUTS, Enzyme re-enabled, ReverseDiff dropped); the Turing-side sweep hasn't
+been re-run at all yet under the new settings. `bench/report.qmd`/`.html` and
+`bench/heatmap.html` have been regenerated and DO reflect this partial data
+correctly (no crash, ratios computed only where both sides have data for a
+given model/backend/precision) — but they are not yet a full, meaningful
+PB-vs-Turing comparison across the whole corpus. The user now has
+`bench/run_all.ps1` to run both sweeps to completion themselves; report/
+heatmap should be regenerated again once that finishes
+(`julia --project=. bench/generate_report.jl && quarto render
+bench/report.qmd` and `julia --project=. bench/generate_heatmap.jl`).
+
+## 2026-07-07 — corpus-wide benchmark: every model, every AD backend, both precisions, PB vs Turing
 
 User's explicit ask after M3: "for every model we have set up for benchmarking, I want them run — multiple AD backends, Float32 vs Float64, run on Turing with multiple backends too, tracked in report tables."
 

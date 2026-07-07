@@ -4,6 +4,7 @@ Manifest.toml
 *.jl.mem
 /docs/build/
 /bench/report.html
+/bench/heatmap.html
 /bench/*_files/
 devlog.md
 plan.md
