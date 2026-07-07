@@ -7,6 +7,135 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
+## 2026-07-07 — first real test run: found and fixed 7 bugs, dropped the built-in optimizer
+
+Memory freed up enough to actually instantiate and run the package for the
+first time (everything up to this point had been reviewed only by reading).
+`Pkg.test()` surfaced real problems immediately — recorded here so the
+pattern ("static review missed these; only running the code caught them")
+isn't lost.
+
+**Julia/dependency resolution.** The `julia` on PATH is a standalone 1.10.9
+install, not the juliaup-managed 1.12.4 used when the ecosystem was
+originally explored — this didn't matter in the end (1.10 resolves the same
+package lines fine), but the FIRST `Pkg.instantiate()` failed with an
+"unsatisfiable requirements" error that looked like a real Bijectors/
+AbstractPPL incompatibility. Root cause: our own `Bijectors = "0.15.24"`
+compat entry was an exact pin instead of a lower bound, artificially forcing
+the resolver onto the *old* 0.15.x line (which really is incompatible with
+AbstractPPL 0.15) instead of letting it pick 0.16.1 (which works fine and
+still has the full `VectorBijectors` API). Fixed to `"0.15.24, 0.16"`. Lesson
+(saved to memory): install and verify FIRST, derive compat bounds from what
+actually resolved — don't hand-write bounds from package browsing and hope.
+
+**Turing genuinely cannot be loaded alongside this package, ever.** Not a
+compat-tuning problem: Turing 0.45 (newest released) depends on AbstractPPL
+0.14.2, while this package needs AbstractPPL 0.15.x for the VectorBijectors
+API the whole layout system is built on. Confirmed by direct experiment (see
+`test/comparison_env/`) — no combination of compat bounds resolves both in
+one dependency graph. Fix: `test/comparison_env/generate_turing_reference.jl`
+is a one-time, separate-environment script that runs Turing's side of the
+accuracy/speed comparisons and freezes the numbers into
+`test/turing_reference.jl` (plain literals); `test/turing_comparison.jl`
+reads that file and never imports Turing itself. Also had to update it for
+Turing 0.45's new FlexiChains-backed `VNChain` return type (`chain[:mu]`
+instead of `MCMCChains`-style `chain[range, [:mu], :]` indexing) and the fact
+that `Turing.VarInfo` isn't re-exported anymore (use `DynamicPPL.VarInfo`
+directly). Mooncake/Enzyme/PolyesterForwardDiff/ReverseDiff/CUDA/
+Optimization/OptimizationOptimJL, by contrast, all coexist with this package
+just fine — only Turing itself was the blocker, so those stayed in
+`[extras]`/`[targets]`.
+
+**Real bugs found by actually running the code:**
+
+1. **`compiler.jl`: `esc()` is not composable.** `esc(:AbstractEvalMode)`
+   spliced into a quote that itself gets `esc()`'d at the top level produces
+   `Expr(:escape, Expr(:escape, ...))`, which is a syntax error at macro
+   expansion ("invalid syntax (escape (outerref ...))") — this broke EVERY
+   model definition, immediately, on the very first smoke test. Root cause:
+   escaping only needs to happen once per identifier; since the whole
+   generated block is already escaped once (so user identifiers like
+   `Normal` resolve at the call site), internal names (`AbstractEvalMode`,
+   `Accum`, `Model`, `tilde`, `tilde_index`, `tilde_dot`, `getcond`) must be
+   reached by module-qualifying them (`PracticalBayes.AbstractEvalMode`) —
+   not by escaping them individually. Confirmed the fix pattern with a
+   minimal repro before touching the real macro.
+2. **`ext/PracticalBayesOptimizationExt.jl`: method-overwrite during
+   precompilation.** The original design had both `optimize.jl`'s stub and
+   the extension define `_external_optimize(negf, negg!, θ0, alg; kwargs...)`
+   — identical signatures, so Julia treats the extension's definition as
+   *overwriting* the same method, which precompilation forbids
+   ("Method overwriting is not permitted during Module precompilation").
+   Fixed by making the hook a `Ref{Any}` holding a function, replaced via
+   plain assignment in the extension's `__init__` — a value replacement, not
+   a method redefinition, so it doesn't hit the restriction.
+3. **`PracticalBayes.jl`: `ForwardDiff` was a `[deps]` entry but never
+   actually `using`'d anywhere in source.** `AutoForwardDiff()` is the
+   hardcoded default `adtype` in three public functions, but
+   DifferentiationInterface's ForwardDiff support is a package extension
+   that only activates once ForwardDiff is loaded IN THE SESSION — being a
+   transitive dependency isn't enough. `using PracticalBayes` alone used to
+   fail the moment any AD path ran; fixed by adding `using ForwardDiff:
+   ForwardDiff` to the top-level module file.
+4. **Same gotcha in the test suite** for Mooncake/Enzyme/
+   PolyesterForwardDiff: `Base.find_package(...)` only confirms a package is
+   *installed*, not *loaded* — each backend's testset needed an explicit
+   `@eval import X` before using `AutoX()`.
+5. **`accumulator.jl`: `Accum{T}`'s implicit default constructor doesn't
+   promote.** `build_layout(...; T=Float32)` failed with a `MethodError`
+   the first time a `Float64`-typed `logpdf` result (from a `Float64`
+   distribution) got accumulated into a `Float32`-seeded `Accum` — the
+   auto-generated constructor requires both fields to already be the exact
+   same concrete type. Fixed with an explicit `Accum(logprior, loglik) =
+   Accum(promote(logprior, loglik)...)` outer constructor (verified by a
+   minimal repro that this doesn't infinitely recurse — Julia picks the
+   more-specific matching-type constructor first).
+6. **`optimize.jl`: `g_tol=1e-8` was stricter than achievable.** A
+   1-parameter conjugate-Normal MAP matched the analytic posterior mean to 8
+   significant figures (gradient norm ~3e-7) but never satisfied a `1e-8`
+   gradient-norm threshold, burning the full 500-iteration budget and
+   reporting `converged=false` on an already-correct answer. This class of
+   bug (and the built-in L-BFGS entirely) is now moot — see below.
+7. **`tilde.jl`: `.~` allocated ~80KB/call and ran ~4x slower than a raw
+   loop**, failing the actual core design goal (observe cost parity with a
+   framework-free loop). Root cause: `sum(logpdf.(dist, y))` materializes a
+   full intermediate `Vector` before summing. Fix: dispatch to
+   `Distributions.loglikelihood(dist, y)` (Distributions.jl's own
+   purpose-built, allocation-free total-log-likelihood function) whenever
+   `dist` is a single `Distribution` — which it always is for the common,
+   documented `y .~ Normal.(mu, sigma)` idiom with scalar `mu`/`sigma`
+   (Julia's broadcast collapses to a scalar `Normal`, not an array, when
+   every argument is scalar). Falls back to the old sum-of-logpdf form only
+   for genuine per-observation-distinct distributions (`Normal.(mus, sigma)`
+   with a vector `mus`), which `loglikelihood` doesn't support. Result: 16
+   bytes/call (was 80,064), and PracticalBayes now runs within ~3.4% of a
+   hand-written `sum(logpdf.(Normal(mu,sigma), y))` loop on a 10,000-
+   observation model — matching the M1 acceptance target.
+
+**Speed vs Turing, now that both numbers exist.** On the same 10k-observation
+two-parameter model: PracticalBayes is ~10% slower than Turing's own `~` and
+~4% faster than Turing's `@addlogprob!` escape hatch (frozen reference in
+`test/turing_reference.jl`) — essentially parity, not the dramatic win the
+original motivating premise assumed. Consistent with the very first
+ecosystem survey's finding that DynamicPPL 0.41 already closed most of the
+historical `~`-vs-`@addlogprob!` gap itself. The real, and larger, win is
+against a raw framework-free loop (~3.4% overhead after bug #7's fix) — that
+comparison is the one that actually isolates *this package's* design, since
+Turing's number is a moving target of its own implementation's overhead.
+
+**Dropped the hand-rolled L-BFGS entirely** (per user: "we can drop the hand
+rolled optimiser, if its too much trouble. full bayes is main target").
+`maximum_a_posteriori`/`maximum_likelihood`/`laplace_approximation` now
+require `optimizer` as a positional argument and always go through
+`Optimization.jl` (still a `[weakdeps]`-only, no-fallback dependency — no
+built-in path at all now, matching the "full Bayes is the main target,
+point-estimation is a lean, opt-in convenience" framing). Removed the
+now-pointless `_lbfgs_maximize`/two-loop-recursion/Armijo-line-search code
+(~90 lines) and its `g_tol` tuning problem along with it. `PointEstimate`'s
+`iterations`/`converged` fields became a single `retcode::Symbol` (from
+Optimization.jl's `sol.retcode`), since there's no longer a builtin
+iteration count to report.
+
 ## 2026-07-06 (later) — errors-as-rejected-samples, untracked/nuisance params, MAP/MLE/Laplace
 
 Three items pulled off "later considerations.md" in one session, all additive

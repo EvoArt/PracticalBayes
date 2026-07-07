@@ -84,7 +84,11 @@ end
     # unknown" pattern the compiler now rejects at macro-expansion time (see
     # `_dot_tilde_expansion` in compiler.jl) rather than silently computing a
     # logpdf against uninitialized memory at runtime.
-    @test_throws ErrorException @eval @model function bad_dot_assume()
+    # `@eval` inside an `include`d test file wraps the macro-expansion error
+    # in a `LoadError` (Julia's standard behavior for errors during file
+    # loading), rather than raising the underlying `ErrorException` directly
+    # the way a bare top-level `@eval` in the REPL would.
+    @test_throws LoadError @eval @model function bad_dot_assume()
         x = Vector{Float64}(undef, 3)
         x .~ Normal.(zeros(3), 1.0)
         return x

@@ -80,13 +80,18 @@ macro model(expr)
     # `__mode__` and `__acc__` as the first two positional arguments — every
     # generated evaluator has this fixed calling convention, checked by
     # `evaluate(model, mode, acc)` in model.jl (`m.f(mode, acc, m.args...)`).
-    # `esc(...)` on `AbstractEvalMode`/`Accum` is needed because the whole
-    # macro return value gets wrapped in one more `esc` at the end (see below);
-    # without it here, these two annotations would double-escape incorrectly
-    # relative to identifiers coming from the *user's* macro-call environment.
+    #
+    # `AbstractEvalMode`/`Accum` are referenced fully module-qualified
+    # (`PracticalBayes.AbstractEvalMode`) rather than escaped: the whole
+    # generated block gets wrapped in one `esc(quote ... end)` at the bottom
+    # (so user identifiers like `Normal` resolve at the macro call site), and
+    # `esc` is not composable — escaping a piece that's already inside a
+    # fully-escaped quote produces invalid syntax ("escape (escape ...)").
+    # Module-qualifying is the standard way to reach into our own package's
+    # internals from inside an escaped quote without re-escaping.
     eval_def = Dict(
         :name => eval_name,
-        :args => [:(__mode__::$(esc(:AbstractEvalMode))), :(__acc__::$(esc(:Accum))), def[:args]...],
+        :args => [:(__mode__::PracticalBayes.AbstractEvalMode), :(__acc__::PracticalBayes.Accum), def[:args]...],
         :kwargs => def[:kwargs],
         :whereparams => def[:whereparams],
         :body => quote
@@ -112,7 +117,7 @@ macro model(expr)
         :kwargs => ctor_kwargs,
         :whereparams => def[:whereparams],
         :body => quote
-            return $(esc(:Model))($(eval_name), (; $(nt_pairs...)))
+            return PracticalBayes.Model($(eval_name), (; $(nt_pairs...)))
         end,
     )
     ctor_fn = combinedef(ctor_def)
@@ -217,9 +222,9 @@ function _tilde_expansion(lhs, rhs, argnames)
         # what lets the generated code skip DynamicPPL's runtime
         # `inargnames`/context-walk check entirely.
         s = lhs
-        valueexpr = s in argnames ? s : :($(esc(:getcond))(__mode__, $(Val)($(QuoteNode(s)))))
+        valueexpr = s in argnames ? s : :(PracticalBayes.getcond(__mode__, $(Val)($(QuoteNode(s)))))
         return quote
-            ($(s), __acc__) = $(esc(:tilde))(__mode__, $(Val)($(QuoteNode(s))), $(rhs), $(valueexpr), __acc__)
+            ($(s), __acc__) = PracticalBayes.tilde(__mode__, $(Val)($(QuoteNode(s))), $(rhs), $(valueexpr), __acc__)
         end
     elseif lhs isa Expr && lhs.head == :ref
         # Indexed `x[i, j, ...] ~ D`: `lhs.args[1]` is the container
@@ -236,7 +241,7 @@ function _tilde_expansion(lhs, rhs, argnames)
         # target here is just a throwaway — we don't need `container[idx...]`
         # on the left because the container is already updated in place.
         return quote
-            (_pb_tmp_, __acc__) = $(esc(:tilde_index))(
+            (_pb_tmp_, __acc__) = PracticalBayes.tilde_index(
                 __mode__, $(Val)($(QuoteNode(s))), $(container), ($(idx...),), $(rhs), __acc__
             )
         end
@@ -269,7 +274,7 @@ function _dot_tilde_expansion(lhs, rhs, argnames)
     )
     s = lhs
     return quote
-        (__acc__) = $(esc(:tilde_dot))(__mode__, $(Val)($(QuoteNode(s))), $(lhs), $(rhs), __acc__)
+        (__acc__) = PracticalBayes.tilde_dot(__mode__, $(Val)($(QuoteNode(s))), $(lhs), $(rhs), __acc__)
     end
 end
 

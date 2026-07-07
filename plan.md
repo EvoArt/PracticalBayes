@@ -42,8 +42,8 @@ src/
 ├── gibbs.jl            # Gibbs, GibbsState, block conditioning, setparams!! refresh
 ├── latent.jl           # AbstractLatentKernel, ModelConditional, latent_step
 ├── predict.jl          # rand(model), predict, returned, logjoint/logprior/loglikelihood
-└── optimize.jl         # maximum_a_posteriori/maximum_likelihood/laplace_approximation,
-                         # hand-rolled L-BFGS default + Optimization.jl extension hook
+└── optimize.jl         # maximum_a_posteriori/maximum_likelihood/laplace_approximation
+                         # (no built-in optimizer — always requires Optimization.jl)
 ext/
 └── PracticalBayesOptimizationExt.jl  # loaded when the user has `using Optimization`
 test/  runtests.jl, compiler.jl, layout.jl, logdensity.jl, optimize.jl, hmc.jl, gibbs.jl,
@@ -66,9 +66,13 @@ see the devlog entry dated 2026-07-06 (later) for full detail:
   them back) — a reporting-only flag, invisible to `EvalMode`/`tilde.jl`.
 - **MAP/MLE/Laplace**: `maximum_a_posteriori`, `maximum_likelihood`,
   `laplace_approximation` in `optimize.jl`, all built on
-  `DifferentiationInterface` directly. Default optimizer is a hand-rolled
-  L-BFGS (`_lbfgs_maximize`); passing `optimizer=<an Optimization.jl algorithm>`
-  requires `using Optimization` (weak dep + package extension).
+  `DifferentiationInterface` directly. Point estimation is a secondary
+  feature (full Bayesian NUTS sampling is the main target), so there is NO
+  built-in optimizer: `optimizer` is a required positional argument (an
+  Optimization.jl algorithm, e.g. `OptimizationOptimJL.BFGS()`), and calling
+  any of the three without `using Optimization` (+ a solver package) loaded
+  errors with instructions. `Optimization` stays a `[weakdeps]`-only
+  dependency + package extension (`ext/PracticalBayesOptimizationExt.jl`).
 
 Deps: AbstractMCMC 5, AbstractPPL 0.15, ADTypes, Accessors, AdvancedHMC 0.8, Bijectors ≥0.15.24, DifferentiationInterface, Distributions, ForwardDiff (default adtype), LogDensityProblems 2, MCMCChains, MacroTools, Random. Test extras: Mooncake or ReverseDiff, JET, StableRNGs, DynamicPPL (logjoint cross-check only), CUDA (gated).
 

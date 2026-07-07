@@ -2,6 +2,14 @@ module PracticalBayes
 
 using Random: Random, AbstractRNG
 using AbstractPPL: AbstractPPL
+# `ForwardDiff` is the hardcoded default `adtype` for `maximum_a_posteriori`/
+# `maximum_likelihood`/`laplace_approximation` (optimize.jl). DifferentiationInterface
+# resolves `AutoForwardDiff()` via a package extension that only activates
+# once ForwardDiff is actually loaded IN THE SESSION — being merely a
+# `[deps]` entry in Project.toml is not enough, since Julia doesn't eagerly
+# load a dependency's code just because it's declared; `using` here forces
+# it, so `using PracticalBayes` alone is sufficient for the AD defaults to work.
+using ForwardDiff: ForwardDiff
 
 include("accumulator.jl")
 include("modes.jl")

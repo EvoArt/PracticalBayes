@@ -37,7 +37,14 @@ end
 end
 
 @testset "ad_backends.jl: Mooncake agrees with ForwardDiff" begin
+    # DifferentiationInterface's per-backend support is a package EXTENSION
+    # that only activates once the backend package is actually loaded in
+    # this session — `Base.find_package` only confirms it's installed, not
+    # loaded, so we `import` it here rather than relying on installation
+    # alone (see the ForwardDiff `using` in PracticalBayes.jl for the same
+    # gotcha on the default backend).
     if !isnothing(Base.find_package("Mooncake"))
+        @eval import Mooncake
         layout, θ0, store0, ref_grad = _reference_grad()
         m = ad_test_model(2.0)
         ldf = LogDensityFunction(m, layout, store0, AutoMooncake(; config=nothing); θ0=θ0)
@@ -50,6 +57,7 @@ end
 
 @testset "ad_backends.jl: Enzyme agrees with ForwardDiff" begin
     if !isnothing(Base.find_package("Enzyme"))
+        @eval import Enzyme
         layout, θ0, store0, ref_grad = _reference_grad()
         m = ad_test_model(2.0)
         ldf = LogDensityFunction(m, layout, store0, AutoEnzyme(); θ0=θ0)
@@ -62,6 +70,7 @@ end
 
 @testset "ad_backends.jl: PolyesterForwardDiff agrees with ForwardDiff" begin
     if !isnothing(Base.find_package("PolyesterForwardDiff"))
+        @eval import PolyesterForwardDiff
         layout, θ0, store0, ref_grad = _reference_grad()
         m = ad_test_model(2.0)
         ldf = LogDensityFunction(m, layout, store0, AutoPolyesterForwardDiff(; chunksize=2); θ0=θ0)
@@ -85,8 +94,14 @@ end
     layout, θ0, store0 = build_layout(m; values=(:z,), init=(; z=0.5))
 
     backends = Pair{String,Any}["ForwardDiff" => AutoForwardDiff()]
-    !isnothing(Base.find_package("Mooncake")) && push!(backends, "Mooncake" => AutoMooncake(; config=nothing))
-    !isnothing(Base.find_package("Enzyme")) && push!(backends, "Enzyme" => AutoEnzyme())
+    if !isnothing(Base.find_package("Mooncake"))
+        @eval import Mooncake
+        push!(backends, "Mooncake" => AutoMooncake(; config=nothing))
+    end
+    if !isnothing(Base.find_package("Enzyme"))
+        @eval import Enzyme
+        push!(backends, "Enzyme" => AutoEnzyme())
+    end
 
     for (backend_name, adtype) in backends
         @testset "$backend_name" begin

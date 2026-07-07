@@ -144,18 +144,27 @@ function build_layout(
     assumed = filter(r -> r.role != :observed, records)
     value_names = Set{Symbol}(values)
     if flat === nothing
-        # default: every assumed name not explicitly sent to the value-store
-        flat_names = Set{Symbol}(r.name for r in assumed if !(r.name in value_names))
+        # Default: every assumed name not explicitly sent to the value-store
+        # AND not discrete/latent — a discrete site has no continuous
+        # flat-vector encoding (there's no sensible "unconstrained bijector"
+        # for e.g. a categorical draw), so it must NEVER end up in
+        # `flat_names` by default, only ever via an explicit `values=`
+        # assignment (checked below). Excluding `:latent` roles here (not
+        # just checking afterward) is what makes the error below reachable
+        # at all — a role-blind "everything not in value_names" default
+        # would silently swallow every unassigned discrete site into
+        # `flat_names` and never trigger the check.
+        flat_names = Set{Symbol}(r.name for r in assumed if r.role == :param && !(r.name in value_names))
     else
         flat_names = Set{Symbol}(flat)
     end
 
-    # Discrete/latent sites have no continuous flat-vector encoding (there's
-    # no sensible "unconstrained bijector" for e.g. a categorical draw), so
-    # they MUST be routed to the value-store (and updated by a user kernel via
-    # Gibbs) rather than ending up in `flat_names` by default.
+    # Discrete/latent sites have no continuous flat-vector encoding, so they
+    # MUST be routed to the value-store (and updated by a user kernel via
+    # Gibbs) rather than ending up in `flat_names` at all (whether by the
+    # default above or via an explicit `flat=` list that mistakenly includes one).
     for r in assumed
-        if r.role == :latent && !(r.name in value_names) && !(r.name in flat_names)
+        if r.role == :latent && !(r.name in value_names)
             throw(ArgumentError(
                 "site `$(r.name)` has a discrete/latent distribution and is neither " *
                 "assigned to a value-block (`values=(:$(r.name),...)`) nor conditioned. " *

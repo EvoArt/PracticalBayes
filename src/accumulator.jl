@@ -17,6 +17,15 @@ end
 
 Accum(z) = Accum(z, z)
 Accum{T}() where {T<:Real} = Accum{T}(zero(T), zero(T))
+# Explicit promoting constructor: `struct Accum{T}`'s implicit default
+# constructor requires BOTH fields to already be the same concrete `T`, but
+# `acc_prior`/`acc_lik` below routinely combine values of different types
+# (e.g. accumulating a Float64 `logpdf` result into a Float32-seeded `Accum`,
+# which happens whenever a model mixes distributions/constants of different
+# precisions during TraceMode, or under mixed-precision Dual arithmetic).
+# Promoting here means the accumulator's type naturally widens instead of
+# throwing a MethodError on the first mismatched site.
+Accum(logprior, loglik) = Accum(promote(logprior, loglik)...)
 
 @inline acc_prior(a::Accum, x) = Accum(a.logprior + x, a.loglik)
 @inline acc_lik(a::Accum, x) = Accum(a.logprior, a.loglik + x)
