@@ -7,6 +7,61 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
+## 2026-07-07 (later) — proper benchmark harness, two more findings
+
+The single-number, single-backend, single-model-size speed comparison from
+earlier the same day was methodologically thin — user's own critique: noisy
+without repetition, no AD-backend sweep, and for a simple enough model most
+wall-clock time may not even be in "PPL overhead" at all. Replaced with
+`bench/suite.jl`: a hand-rolled timing harness (NOT BenchmarkTools/
+Chairmarks — their adaptive sampling budgets can degenerate to a single
+sample once a call is expensive enough, e.g. a real NUTS run, and neither
+exposes a portable "minimum N samples regardless of cost" knob) reporting
+min/median/mean/std over an explicit fixed rep count, across: two model
+shapes (tiny: 2 params/20 obs; large: 2 params/50k obs), Float64 AND Float32,
+and three honesty-layered measurements — density-only, density+gradient per
+available AD backend, and a short end-to-end NUTS run (explicitly NOT held
+to the same "must match a raw loop" bar as the density-only layer, since for
+a 2-parameter model this is dominated by AdvancedHMC's own tree-building/
+adaptation overhead, not model evaluation — confirmed by the numbers: ~2.3ms
+for 200 NUTS samples on the tiny model vs ~860µs for a SINGLE gradient call
+on the large model, i.e. inference bookkeeping cost, not model cost,
+dominates the tiny case exactly as the user suspected).
+
+Two more findings this pass, both now documented rather than silently
+lived-with:
+
+1. **Indexed `x[i] ~ dist` families are the one hot-path allocation left.**
+   The container (`x = Vector{Float64}(undef, n)`) is plain user code inside
+   the model body, so it reruns — and reallocates — on every single
+   `EvalMode` evaluation (every NUTS leapfrog step): ~8KB/call measured for
+   n=1000. Considered caching/reusing the buffer; deliberately did NOT
+   implement it, because it would only help the no-gradient path (AD
+   backends need a fresh Dual-typed/backend-specific buffer per call
+   regardless, and NUTS always needs gradients — so a cached buffer wouldn't
+   touch the actual sampling hot path) while adding real complexity
+   (thread-safety for `MCMCThreads`, cache invalidation). Documented as a
+   known limitation on `tilde_index`'s docstring, with the recommended
+   workaround (array distributions via plain `~` don't need a container at
+   all).
+2. **Float32 NUTS needs a Float32-typed `δ`.** `AdvancedHMC.NUTS(δ)` fixes
+   its internal step-size type parameter to `typeof(δ)`; passing the default
+   `Float64` `0.8` with a `Float32` position vector fails inside step-size
+   adaptation (a real error, not silent wrong-answer behavior). `NUTS(0.8f0)`
+   fixes it completely — confirmed full end-to-end Float32 NUTS sampling
+   works once the types match. This is an AdvancedHMC requirement, not
+   something this package introduces or can paper over; documented in
+   `plan.md`'s restrictions section and `bench/suite.jl`'s NUTS layer.
+
+Benchmark results as of this session (`bench/suite.jl`, this machine): at
+tiny scale (n=20) PracticalBayes matches a raw framework-free loop almost
+exactly (ratio ≈1.0, both sub-microsecond). At large scale (n=50,000)
+PracticalBayes is actually FASTER than the naive "raw" reference loop
+(ratio 0.57–0.78) — the reference recomputes `Normal(mu,sigma)` and does a
+fresh broadcast each call, while PracticalBayes's `Distributions.loglikelihood`-
+based path avoids that. Both scales confirm the requirement-1 design goal
+holds under real repeated measurement, not just a single noisy sample.
+
 ## 2026-07-07 — first real test run: found and fixed 7 bugs, dropped the built-in optimizer
 
 Memory freed up enough to actually instantiate and run the package for the

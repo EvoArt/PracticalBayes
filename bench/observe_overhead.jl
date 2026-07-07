@@ -5,6 +5,13 @@
 # than a raw `sum(logpdf.(...))` loop, something in the tilde/EvalMode hot
 # path has regressed.
 #
+# This is a QUICK single-shot check (one BenchmarkTools @btime per side).
+# For the fuller picture — multiple model sizes, multiple AD backends,
+# Float32, and an honest breakdown of density-only vs gradient vs full-NUTS
+# cost (with explicit fixed-repetition timing, not BenchmarkTools' adaptive
+# budget, which can degenerate to a single sample on expensive
+# configurations) — see `bench/suite.jl` instead.
+#
 # Run manually with: julia --project=. bench/observe_overhead.jl
 # (Requires BenchmarkTools; not a package dependency — install into your own
 # global/shared environment if you don't already have it.)

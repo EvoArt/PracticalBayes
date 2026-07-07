@@ -144,6 +144,24 @@ end
 Handles `x[i] ~ dist` sites. `container` is the pre-declared array bound to
 `x`; the element at linear index `i` is written (assume) or read (observe)
 and the corresponding sub-range of `θ` is selected via `elem_range`.
+
+KNOWN LIMITATION: `container` (`x`) is whatever the user's own model-body
+line (typically `x = Vector{Float64}(undef, n)`) produced — that line reruns
+on every single `EvalMode` evaluation (every NUTS leapfrog step), so it
+reallocates the container fresh each time. This is plain user code, not
+something the compiler or this function controls, and it's the one place in
+the hot path that isn't allocation-free: for `n` on the order of thousands,
+expect on the order of `n * sizeof(eltype)` bytes/call. Measured: ~8KB/call
+for a 1000-element `Float64` indexed family. Caching/reusing this buffer
+was considered and deliberately NOT implemented: it would only help the
+no-gradient (order-0) evaluation path, since AD backends need a fresh
+Dual-typed (or backend-specific) buffer per call regardless — and NUTS
+always requests gradients, so a cached buffer wouldn't help the actual
+sampling hot path, while adding real complexity (thread-safety for
+`MCMCThreads`, cache invalidation). If this allocation matters for your
+model, prefer an array distribution via plain `~` (`product_distribution`,
+`MvNormal`) over an indexed `x[i] ~ dist` loop — those don't need a
+pre-declared container at all.
 """
 @inline function tilde_index(m::EvalMode, ::Val{s}, container, idx::Tuple, dist, acc::Accum) where {s}
     # `idx` is whatever the user wrote inside `x[...]`, e.g. `(i,)` for a

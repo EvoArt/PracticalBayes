@@ -169,10 +169,11 @@ Guarantee: no framework-introduced scalar indexing — parameter reads are `view
 ## Documented restrictions (by design)
 
 - No value-dependent model structure (site count/shapes can't depend on draws); debug mode (off by default) asserts trace/eval site-count match.
-- `x[i] ~` families need pre-declared containers and uniform per-element linked length; partial observation of an array unsupported in MVP.
+- `x[i] ~` families need pre-declared containers and uniform per-element linked length; partial observation of an array unsupported in MVP. The container (`x = Vector{Float64}(undef, n)`) is plain user code that reruns — and reallocates — on every `EvalMode` evaluation; this is the one hot-path allocation not eliminated (~8KB/call measured for n=1000 Float64). Prefer an array distribution (`product_distribution`, `MvNormal`) via plain `~` if this matters — see the KNOWN LIMITATION note on `tilde_index` in tilde.jl.
 - Conditioning on whole top-level names only (`model | (; x=...)`, not `x[1]`) — but a name need not be a model *argument* to be conditionable: `z := expr` inside the body marks a computed local as "has a value," so `z ~ D` after it is an observe against that computed value, same as if `z` were an argument.
 - Recompilation per conditioning pattern / Gibbs partition (fine for MCMC, note for interactive use).
 - `DI.Constant` behavior needs an explicit per-backend test (ForwardDiff safe by construction; Mooncake/ReverseDiff in M2/M3 matrix; Enzyme deferred to M6).
+- **Float32 NUTS requires a Float32-typed `δ`**: `AdvancedHMC.NUTS(δ)` fixes its internal step-size type to `typeof(δ)`, so a `Float32` position vector (`build_layout(...; T=Float32)`) needs `NUTS(0.8f0)`, not `NUTS(0.8)` — passing a `Float64` `δ` with a `Float32` θ fails inside AdvancedHMC's step-size adaptation. This is an AdvancedHMC requirement, not something this package controls; confirmed end-to-end Float32 NUTS sampling works once `δ`'s type matches.
 
 ## Verification (overall)
 
