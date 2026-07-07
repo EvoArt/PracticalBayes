@@ -7,7 +7,37 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
-## 2026-07-07 (latest) — model corpus complete for now: 46 PosteriorDB models + 7 tutorials
+## 2026-07-07 (latest) — note: complex models (mixtures/HMM/capture-recapture/GP/NN/ODE) are targeted next, soon
+
+Explicit forward-looking note per user request, so this doesn't get lost:
+the model families deferred at the end of the corpus-porting pass below
+(mixtures, HMM, capture-recapture, Gaussian processes, neural networks,
+ODEs) are NOT abandoned — we intend to come back and target them soon.
+Each needs real new capability, not just more porting effort:
+
+- **Discrete-latent sampling (Gibbs + `AbstractLatentKernel`)** unlocks
+  HMM, capture-recapture (M0/Mb/Mh/Mt/Mtbh/Mth, multi_occupancy), and the
+  two mixture-model tutorials. This is the design plan's own M3 milestone
+  (`i-want-to-make-squishy-pike.md`), never built yet — `build_layout`
+  today hard-errors on any unassigned discrete/latent site specifically
+  because there's nothing to hand it to. This is probably the highest-
+  leverage of the deferred items since it unblocks three whole families at
+  once.
+- **Gaussian processes** need `AbstractGPs.jl` (or hand-rolled kernel +
+  Cholesky code) as a new dependency; not architecturally blocked (a GP
+  prior is "just" a differently-parameterized `MvNormal`), just real new
+  scope (kernel functions, jitter/numerical-stability handling).
+- **Neural networks** need a flat-weight-vector prior + manual
+  unpack-into-layers helper and a new dependency (`Flux.jl`/`Lux.jl`); not
+  architecturally blocked either — a NN forward pass is arbitrary Julia
+  code like any other likelihood.
+- **ODEs** need a solver integration (`DifferentialEquations.jl`/
+  `OrdinaryDiffEq.jl`) and AD-through-the-solver correctness checking.
+
+Returning to the original task list after this note (see below) — CUDA/GPU
+support (design plan milestone M5) is the next item queued up.
+
+## 2026-07-07 — model corpus complete for now: 46 PosteriorDB models + 7 tutorials
 
 Continued the model-porting pass across four more batches (`models_batch2.jl`
 through `models_batch5.jl` in `bench/corpus/posteriordb/`, plus
