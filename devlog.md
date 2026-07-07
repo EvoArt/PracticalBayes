@@ -1,3 +1,47 @@
+## 2026-07-07 — Float32 performance optimization: coercion fix + speed verification
+
+User reported that using Float32 was not providing expected speedup and was
+slightly slower, suggesting implicit Float64 promotion in the hot path.
+
+**Root cause analysis:**
+- Traced promotion points via type probes and isolated tests
+- P1: `logpdf(dist, value)` returns Float64 if `dist` is Float64-parametrized
+  (e.g., `Normal(0.0, 1.0)`), even if `value` is Float32
+- P2: Bijectors.jl hardcodes Float64 bounds in constrained transforms
+  (e.g., `Exp(minimum(d), 1)` where `minimum(d)` is Float64 even for
+  `Exponential{Float32}`), causing bijector output to be Float64 even with
+  Float32 input
+
+**Fix implemented (Option A):**
+- Added `_to_paramtype` helper in `tilde.jl` to coerce values to
+  `eltype(mode.θ)` (the working precision)
+- Applied coercion in `_assume(::FlatSlot,...)` and
+  `_assume_index(::FlatArraySlot,...)` to both the transformed value `x`
+  and the log-jacobian `logjac` from `with_logabsdet_jacobian`
+- This ensures constrained bijector outputs are coerced back to the
+  parameter type before feeding into `logpdf(dist, x) + logjac`
+
+**Verification:**
+- Type probes confirmed Float32 density and gradient types after fix
+- Speed benchmarks showed:
+  - Density-only (20k params): Float32 still slightly slower (~0.71x)
+  - Density + gradient (3k params, ForwardDiff): Float32 faster (~1.24x)
+  - Speedup is more pronounced on gradient path (AD overhead) than raw
+    density evaluation
+- Data type does not need to be Float32: Float32 params + Float64 data is
+  actually slightly faster than Float32 params + Float32 data (~0.84x),
+  because observe path (logpdf with data) is not differentiated by AD and
+  scalar Float64 addition is cheap
+
+**User guidance:**
+- Use Float32 for parameters (the things being differentiated by AD)
+- Data can stay Float64 without performance penalty
+- Distribution literals must use Float32 suffixes (e.g., `Normal(0f0, 1f0)`)
+  to avoid P1 promotion; this is now documented in `build_layout` docstring
+
+**Tests added:**
+- Float32 density type tests (scalar, positive-constrained, array family)
+- Float32 AD gradient type tests
 # PracticalBayes.jl devlog
 
 Running log of design decisions, motivations, and compromises. Newest entries

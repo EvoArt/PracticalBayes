@@ -117,6 +117,14 @@ itself is generally eltype-generic (`logpdf(Normal(0f0,1f0), 0f0)::Float32`);
 the exceptions are distributions whose parameters are stored/promoted as
 `Float64` internally, which is a Distributions.jl-level limitation, not one
 introduced by this package.
+
+**Float32 usage note:** To maintain Float32 precision throughout the computation,
+use Float32 suffixes on distribution literals (e.g., `Normal(0f0, 1f0)`,
+`Exponential(1f0)`). If you write `Normal(0.0, 1.0)`, the distribution will be
+`Normal{Float64}` and `logpdf` will return `Float64`, causing promotion even
+with a Float32 parameter vector. Data can remain Float64 without performance
+penalty — the speedup comes from using Float32 for parameters (the things being
+differentiated by AD), not for data.
 """
 function build_layout(
     model;

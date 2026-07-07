@@ -31,6 +31,28 @@ using Distributions: Distributions, Distribution, logpdf, loglikelihood, Discret
 
 _is_discrete(d) = Distributions.value_support(typeof(d)) <: Discrete
 
+# Coerce a bijector's constrained-space output back to the working precision
+# `T = eltype(mode.θ)`. This is the fix for a silent Float64 promotion in the
+# assume path: `Bijectors.VectorBijectors`'s constrained transforms hardcode
+# Float64 bounds (e.g. `from_linked_vec(Exponential(1f0))` builds
+# `Exp{Float64}(0.0, 1)`, whose `sign*exp(y) + 0.0` promotes a Float32 `y` to
+# Float64 — verified regardless of the distribution's own eltype, since
+# `minimum(Exponential(1f0)) === 0.0`). Left uncoerced, that Float64 value
+# flows into any downstream likelihood distribution built from it (e.g.
+# `Normal.(mu, sigma)`), forcing the dominant large-`n` likelihood loop into
+# Float64 and erasing the point of sampling in Float32.
+#
+# `T(x)` / `T.(x)` is a no-op when `x` is already `T` (the Float64 path is
+# unchanged). Under AD, `T = eltype(mode.θ)` is the backend's Dual/tracked
+# number type, so converting to it preserves derivatives — it just keeps the
+# value and partials at the intended precision rather than the widened one.
+@inline _to_paramtype(::Type{T}, x::Real) where {T<:Real} = convert(T, x)
+@inline _to_paramtype(::Type{T}, x::AbstractArray) where {T<:Real} = convert(AbstractArray{T}, x)
+# Non-Real / non-numeric values (e.g. a discrete draw, or a value read from an
+# untransformed ValueSlot) are passed through untouched — there's no bijector
+# promotion to undo there.
+@inline _to_paramtype(::Type, x) = x
+
 # ===========================================================================
 # `.~` (dot-tilde) — MVP supports OBSERVE only: `y .~ Normal.(μ, σ)` where `y`
 # is already-bound data (a model argument or conditioned value). This
@@ -125,8 +147,13 @@ end
 # must add to the accumulated log-density for a correct change-of-variables
 # (this is the "includes bijector log-|det J|" part of Accum's docstring).
 @inline function _assume(slot::FlatSlot, m::EvalMode, ::Val, dist, acc::Accum)
-    x, logjac = with_logabsdet_jacobian(from_linked_vec(dist), view(m.θ, slot.range))
-    return x, acc_prior(acc, logpdf(dist, x) + logjac)
+    x_raw, logjac = with_logabsdet_jacobian(from_linked_vec(dist), view(m.θ, slot.range))
+    # Undo any Float64 promotion introduced by the constrained bijector's
+    # hardcoded Float64 bounds (see `_to_paramtype` above), so `x` stays in
+    # the working precision `eltype(m.θ)` and any downstream distribution
+    # built from it does too.
+    x = _to_paramtype(eltype(m.θ), x_raw)
+    return x, acc_prior(acc, logpdf(dist, x) + _to_paramtype(eltype(m.θ), logjac))
 end
 
 # ValueSlot: this variable's value is a plain constant read out of `m.store`
@@ -187,9 +214,14 @@ end
 # into `container[k]` — this is what makes `x` (the user's pre-declared
 # array) hold real values after the model runs, e.g. for use in a `return x`.
 @inline function _assume_index(slot::FlatArraySlot, m::EvalMode, ::Val, container, k::Int, dist, acc::Accum)
-    x, logjac = with_logabsdet_jacobian(from_linked_vec(dist), view(m.θ, elem_range(slot, k)))
+    x_raw, logjac = with_logabsdet_jacobian(from_linked_vec(dist), view(m.θ, elem_range(slot, k)))
+    # Same Float64-promotion fix as `_assume(::FlatSlot,...)`. `container`'s
+    # element type is already `paramtype(__mode__) == eltype(m.θ)` (see the
+    # `tilde_index` docstring), so the coerced `x` stores without a further
+    # conversion/InexactError.
+    x = _to_paramtype(eltype(m.θ), x_raw)
     container[k] = x
-    return x, acc_prior(acc, logpdf(dist, x) + logjac)
+    return x, acc_prior(acc, logpdf(dist, x) + _to_paramtype(eltype(m.θ), logjac))
 end
 
 # ValueSlot version: the whole indexed family lives as one array in
