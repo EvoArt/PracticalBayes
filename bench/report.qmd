@@ -1,0 +1,72 @@
+---
+title: "PracticalBayes vs Turing.jl — Benchmark Report"
+subtitle: "Auto-generated from bench/results/*.jsonl — do not edit by hand"
+format:
+  html:
+    toc: true
+    theme: cosmo
+    embed-resources: true
+---
+
+Latest PracticalBayes run: **2026-07-07T11:41:53.543**, commit `5846bced`.
+  
+Latest Turing reference: **2026-07-07T11:47:22.671**, commit `5846bced`.
+
+Timings report **first-call** (includes JIT compilation) separately from **steady-state median** — see `bench/suite.jl` for methodology (hand-rolled fixed-repetition timing, not BenchmarkTools/Chairmarks, so expensive configurations still get a real sample size instead of degenerating to N=1).
+
+## Latest snapshot
+
+### Layer: `logdensity`
+
+| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| normal | large | Float32 | none | 577.0 µs | 587.05 µs | 766.8 µs | 726.5 µs | 0.81× |
+| normal | large | Float64 | none | 791.5 µs | 866.4 µs | 824.6 µs | 689.6 µs | 1.26× |
+| normal | tiny | Float32 | none | 2.6 µs | 0.65 µs | 3.8 µs | 0.4 µs | 1.62× |
+| normal | tiny | Float64 | none | 4.0 µs | 0.5 µs | 4.8 µs | 0.5 µs | 1.0× |
+| poisson | k5_n2000 | Float64 | none | 223.4 µs | 215.7 µs | 155.7 µs | 159.95 µs | 1.35× |
+| poisson | k5_n50000 | Float64 | none | 3.496 ms | 5.633 ms | 4.123 ms | 4.19 ms | 1.34× |
+
+### Layer: `logdensity_raw`
+
+| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| normal | large | Float32 | none | 710.4 µs | 686.85 µs | — | — | — |
+| normal | large | Float64 | none | 739.6 µs | 687.65 µs | — | — | — |
+| normal | tiny | Float32 | none | 2.2 µs | 0.5 µs | — | — | — |
+| normal | tiny | Float64 | none | 2.2 µs | 0.4 µs | — | — | — |
+| poisson | k5_n2000 | Float64 | none | 184.9 µs | 163.2 µs | — | — | — |
+| poisson | k5_n50000 | Float64 | none | 4.757 ms | 3.405 ms | — | — | — |
+
+### Layer: `gradient`
+
+| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| manyparam | K200_N2000 | Float32 | ForwardDiff | 36.526 ms | 38.213 ms | — | — | — |
+| manyparam | K200_N2000 | Float64 | ForwardDiff | 70.049 ms | 56.68 ms | 33.342 ms | 26.815 ms | 2.11× |
+| normal | large | Float32 | ForwardDiff | 972.1 µs | 998.2 µs | 599.7 µs | 765.5 µs | 1.3× |
+| normal | large | Float64 | ForwardDiff | 1.019 ms | 975.95 µs | 905.8 µs | 657.4 µs | 1.48× |
+| normal | tiny | Float32 | ForwardDiff | 8.4 µs | 0.8 µs | 5.7 µs | 0.45 µs | 1.78× |
+| normal | tiny | Float64 | ForwardDiff | 22.4 µs | 0.6 µs | 20.4 µs | 0.5 µs | 1.2× |
+
+### Layer: `nuts`
+
+| Model | Shape | Precision | Backend | PB first-call | PB median | Turing first-call | Turing median | PB/Turing (median) |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| normal | large | Float32 | ForwardDiff | 3905.356 ms | 1565.252 ms | 2828.373 ms | 2006.191 ms | 0.78× |
+| normal | large | Float64 | ForwardDiff | 3393.008 ms | 1422.813 ms | 1747.468 ms | 1914.286 ms | 0.74× |
+| normal | tiny | Float32 | ForwardDiff | 4328.535 ms | 6.716 ms | 2543.031 ms | 11.113 ms | 0.6× |
+| normal | tiny | Float64 | ForwardDiff | 5163.325 ms | 2.986 ms | 2755.692 ms | 11.202 ms | 0.27× |
+
+## History (regression tracking)
+
+Only one recorded run so far for every series — history will populate as `bench/suite.jl` is run again over time (each run appends to `bench/results/history.jsonl`, one line per result).
+
+## Reproducing
+
+```
+julia --project=. bench/suite.jl                                    # PracticalBayes side, appends to bench/results/history.jsonl
+julia --project=test/comparison_env test/comparison_env/generate_turing_reference.jl  # Turing side, appends to bench/results/history_turing.jsonl
+julia --project=. bench/generate_report.jl                          # regenerate this file
+quarto render bench/report.qmd                                      # render to HTML
+```

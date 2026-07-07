@@ -7,7 +7,52 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
-## 2026-07-07 (latest) — real bug in indexed tilde under AD, full Turing parity, AD-crossover confirmed
+## 2026-07-07 (latest) — automated benchmark history + report
+
+Previously, benchmark results only existed as terminal output and one
+hand-written HTML artifact snapshot — no way to tell if a change regressed
+performance without manually re-running and eyeballing numbers. Fixed per
+user request ("the benchmark report should be an automated thing that gets
+updated when the benchmarks are run... tagged by date and latest git
+commit, so we can spot regressions").
+
+**Storage**: `bench/suite.jl` and `test/comparison_env/generate_turing_reference.jl`
+each got a `record!`/`write_history!` pair that appends one JSON-Lines
+record per `TimingResult` — tagged with `package` ("PracticalBayes" or
+"Turing"), `layer` (logdensity/gradient/nuts/etc.), `model`/`shape`/
+`precision`/`backend`, plus a run-level `timestamp` and git `commit` hash —
+to `bench/results/history.jsonl` and `bench/results/history_turing.jsonl`
+respectively. Append-only and committed to git, so `git log -p` on either
+file doubles as a benchmark changelog and regressions are traceable to the
+exact commit that caused them. Hand-rolled JSON (flat objects, no nesting)
+rather than adding a JSON dependency just for this — mirrors the project's
+existing "don't add a dependency for something this small" bias.
+
+**Report**: explicitly NOT hand-written HTML this time (user: "dont write
+html directly. use quarto or plain markdown, that gets rendered as html").
+`bench/generate_report.jl` reads both JSONL files back (a small hand-rolled
+JSON parser — first attempt naively split on `","` and broke as soon as a
+bare numeric field followed a string field with no closing quote to split
+on; replaced with a proper left-to-right character scan) and writes
+`bench/report.qmd`: a latest-snapshot table per layer (PracticalBayes vs
+Turing side by side, with a ratio column), plus a per-series history section
+that will start showing multi-row trends once `bench/suite.jl` has been run
+more than once. `quarto render bench/report.qmd` turns it into
+`bench/report.html` — confirmed this needs nothing beyond the Quarto CLI
+itself (no `QuartoNotebookRunner.jl` install needed, since the `.qmd` has no
+executable code cells, just YAML frontmatter + prose + Markdown tables;
+Quarto bundles what it needs for that case automatically).
+
+Workflow going forward: `julia --project=. bench/suite.jl` (appends to
+`history.jsonl`) → `julia --project=test/comparison_env
+test/comparison_env/generate_turing_reference.jl` (appends to
+`history_turing.jsonl`, only needed when Turing-side numbers might have
+moved) → `julia --project=. bench/generate_report.jl` → `quarto render
+bench/report.qmd`. `report.html` itself is gitignored (a build artifact,
+same treatment as `docs/build/`); `report.qmd`, `generate_report.jl`, and
+both `.jsonl` history files are committed.
+
+## 2026-07-07 — real bug in indexed tilde under AD, full Turing parity, AD-crossover confirmed
 
 Three things happened in one push, triggered directly by user feedback on
 the benchmark methodology ("we should be doing everything we do in our

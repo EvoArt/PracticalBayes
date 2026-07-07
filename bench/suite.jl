@@ -41,6 +41,7 @@ using Random
 using Statistics: mean, median, std
 using LinearAlgebra: dot
 using ADTypes
+using Dates: now
 import LogDensityProblems
 import AbstractMCMC
 import AdvancedHMC
@@ -69,6 +70,82 @@ function Base.show(io::IO, r::TimingResult)
     )
 end
 _fmt(t) = t < 1e-3 ? string(round(t * 1e6; digits=2), "µs") : string(round(t * 1e3; digits=3), "ms")
+
+# ===========================================================================
+# Results recording — tagged by date + git commit so `bench/results/history.jsonl`
+# becomes a regression-spotting history across runs, not just a single
+# snapshot. Deliberately hand-rolled JSON (one flat record per line, only
+# strings/numbers, no nesting) rather than adding a JSON dependency just for
+# this — see `_json_escape`/`to_jsonl` below.
+# ===========================================================================
+
+const _RESULTS = NamedTuple[]  # populated by `record!` during a run_suite() call
+
+"""
+    record!(; package, layer, model, shape, precision, backend, r::TimingResult)
+
+Appends one benchmark result to the in-memory `_RESULTS` collector (flushed
+to `bench/results/history.jsonl` by `write_history!` at the end of
+`run_suite()`). `package` is `"PracticalBayes"` here (this file only ever
+benchmarks our own side — see `test/comparison_env/generate_turing_reference.jl`
+for the equivalent on the Turing side, written to a parallel file).
+"""
+function record!(; package, layer, model, shape, precision, backend, r::TimingResult)
+    push!(
+        _RESULTS,
+        (;
+            package, layer, model, shape, precision, backend,
+            first_call_s=r.first_call_s, min_s=r.min_s, median_s=r.median_s, mean_s=r.mean_s, std_s=r.std_s, reps=r.reps,
+        ),
+    )
+    return r
+end
+
+# Returns `nothing` (via git) as the commit hash if this isn't run inside a
+# git checkout, or if git itself isn't on PATH — history is still useful
+# without it, just without the "which commit was this" regression anchor.
+function _git_commit()
+    try
+        return strip(read(`git -C $(dirname(@__DIR__)) rev-parse HEAD`, String))
+    catch
+        return "unknown"
+    end
+end
+
+_json_escape(s::AbstractString) = replace(s, "\\" => "\\\\", "\"" => "\\\"")
+_json_value(x::AbstractString) = "\"" * _json_escape(x) * "\""
+_json_value(x::Real) = isfinite(x) ? string(x) : "null"
+_json_value(x::Integer) = string(x)
+
+function _to_json_line(nt::NamedTuple)
+    pairs_str = join(("\"$(k)\":$(_json_value(v))" for (k, v) in pairs(nt)), ",")
+    return "{" * pairs_str * "}"
+end
+
+"""
+    write_history!(path = joinpath(@__DIR__, "results", "history.jsonl"))
+
+Appends every result recorded via `record!` since the last call, one JSON
+object per line, each stamped with `timestamp` (ISO-8601-ish,
+`Dates.now()`) and `commit` (this repo's current `HEAD`, so a regression
+can be traced to the exact commit that caused it). Appending (not
+overwriting) is deliberate: `history.jsonl` is meant to accumulate across
+many runs over time, committed to git alongside the code it measured —
+`git log -p bench/results/history.jsonl` doubles as a benchmark changelog.
+"""
+function write_history!(path=joinpath(@__DIR__, "results", "history.jsonl"))
+    mkpath(dirname(path))
+    commit = _git_commit()
+    timestamp = string(now())
+    open(path, "a") do io
+        for r in _RESULTS
+            full = merge((; timestamp, commit), r)
+            println(io, _to_json_line(full))
+        end
+    end
+    println("Wrote ", length(_RESULTS), " results to ", path, " (commit ", commit, ")")
+    return path
+end
 
 """
     time_reps(f, label; reps=30) -> TimingResult
@@ -301,14 +378,19 @@ end
 # ===========================================================================
 
 function run_suite()
+    empty!(_RESULTS)
+
     println("="^100)
     println("Layer 1: logdensity only, Float64")
     println("="^100)
     for n in (20, 50_000)
+        shape = n <= 100 ? "tiny" : "large"
         r_raw, r_pb = bench_logdensity_only(Float64, n)
         println(r_raw)
         println(r_pb)
         println("  -> PracticalBayes / raw ratio (median): ", round(r_pb.median_s / r_raw.median_s; digits=3))
+        record!(; package="PracticalBayes", layer="logdensity", model="normal", shape, precision="Float64", backend="none", r=r_pb)
+        record!(; package="PracticalBayes", layer="logdensity_raw", model="normal", shape, precision="Float64", backend="none", r=r_raw)
     end
 
     println()
@@ -316,10 +398,13 @@ function run_suite()
     println("Layer 1: logdensity only, Float32")
     println("="^100)
     for n in (20, 50_000)
+        shape = n <= 100 ? "tiny" : "large"
         r_raw, r_pb = bench_logdensity_only(Float32, n)
         println(r_raw)
         println(r_pb)
         println("  -> PracticalBayes / raw ratio (median): ", round(r_pb.median_s / r_raw.median_s; digits=3))
+        record!(; package="PracticalBayes", layer="logdensity", model="normal", shape, precision="Float32", backend="none", r=r_pb)
+        record!(; package="PracticalBayes", layer="logdensity_raw", model="normal", shape, precision="Float32", backend="none", r=r_raw)
     end
 
     println()
@@ -327,8 +412,10 @@ function run_suite()
     println("Layer 2: logdensity_and_gradient, per AD backend (Float64)")
     println("="^100)
     for n in (20, 50_000)
-        for r in bench_gradient(Float64, n)
+        shape = n <= 100 ? "tiny" : "large"
+        for (name, r) in zip(first.(_AD_BACKENDS), bench_gradient(Float64, n))
             println(r)
+            record!(; package="PracticalBayes", layer="gradient", model="normal", shape, precision="Float64", backend=name, r)
         end
     end
 
@@ -337,8 +424,10 @@ function run_suite()
     println("Layer 2: logdensity_and_gradient, per AD backend (Float32)")
     println("="^100)
     for n in (20, 50_000)
-        for r in bench_gradient(Float32, n)
+        shape = n <= 100 ? "tiny" : "large"
+        for (name, r) in zip(first.(_AD_BACKENDS), bench_gradient(Float32, n))
             println(r)
+            record!(; package="PracticalBayes", layer="gradient", model="normal", shape, precision="Float32", backend=name, r)
         end
     end
 
@@ -349,8 +438,13 @@ function run_suite()
     println("  AdvancedHMC's own per-iteration overhead, not model evaluation.")
     println("="^100)
     for n in (20, 50_000)
-        println(bench_nuts(Float64, n))
-        println(bench_nuts(Float32, n))
+        shape = n <= 100 ? "tiny" : "large"
+        r64 = bench_nuts(Float64, n)
+        r32 = bench_nuts(Float32, n)
+        println(r64)
+        println(r32)
+        record!(; package="PracticalBayes", layer="nuts", model="normal", shape, precision="Float64", backend="ForwardDiff", r=r64)
+        record!(; package="PracticalBayes", layer="nuts", model="normal", shape, precision="Float32", backend="ForwardDiff", r=r32)
     end
 
     println()
@@ -359,8 +453,11 @@ function run_suite()
     println("  AD should start beating forward-mode, unlike the 2-parameter shapes above.")
     println("="^100)
     for T in (Float64, Float32)
-        for (_, r) in bench_manyparam_gradient(T, 200, 2000)
-            r === nothing || println(r)
+        for (name, r) in bench_manyparam_gradient(T, 200, 2000)
+            if r !== nothing
+                println(r)
+                record!(; package="PracticalBayes", layer="gradient", model="manyparam", shape="K200_N2000", precision=string(T), backend=name, r)
+            end
         end
     end
 
@@ -373,7 +470,11 @@ function run_suite()
         println(r_raw)
         println(r_pb)
         println("  -> PracticalBayes / raw ratio (median): ", round(r_pb.median_s / r_raw.median_s; digits=3))
+        record!(; package="PracticalBayes", layer="logdensity", model="poisson", shape="k5_n$n", precision="Float64", backend="none", r=r_pb)
+        record!(; package="PracticalBayes", layer="logdensity_raw", model="poisson", shape="k5_n$n", precision="Float64", backend="none", r=r_raw)
     end
+
+    write_history!()
 end
 
 abspath(PROGRAM_FILE) == (@__FILE__) && run_suite()

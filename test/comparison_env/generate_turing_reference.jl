@@ -67,6 +67,60 @@ function time_reps(f, label; reps=30)
 end
 
 # ===========================================================================
+# Results recording — same JSONL history mechanism as bench/suite.jl, written
+# to a parallel file (`bench/results/history_turing.jsonl`) so a report can
+# join both sides by (layer, model, shape, precision, backend) without ever
+# loading Turing and PracticalBayes in the same process. `package` is always
+# "Turing" here. Deliberately a verbatim copy of bench/suite.jl's recorder
+# rather than a shared dependency — this script runs in its own environment.
+# ===========================================================================
+
+const _RESULTS = NamedTuple[]
+
+function record!(; package, layer, model, shape, precision, backend, r::TimingResult)
+    push!(
+        _RESULTS,
+        (;
+            package, layer, model, shape, precision, backend,
+            first_call_s=r.first_call_s, min_s=r.min_s, median_s=r.median_s, mean_s=r.mean_s, std_s=r.std_s, reps=r.reps,
+        ),
+    )
+    return r
+end
+
+function _git_commit()
+    try
+        return strip(read(`git -C $(joinpath(@__DIR__, "..", "..")) rev-parse HEAD`, String))
+    catch
+        return "unknown"
+    end
+end
+
+_json_escape(s::AbstractString) = replace(s, "\\" => "\\\\", "\"" => "\\\"")
+_json_value(x::AbstractString) = "\"" * _json_escape(x) * "\""
+_json_value(x::Real) = isfinite(x) ? string(x) : "null"
+_json_value(x::Integer) = string(x)
+
+function _to_json_line(nt::NamedTuple)
+    pairs_str = join(("\"$(k)\":$(_json_value(v))" for (k, v) in pairs(nt)), ",")
+    return "{" * pairs_str * "}"
+end
+
+function write_history!(path=joinpath(@__DIR__, "..", "..", "bench", "results", "history_turing.jsonl"))
+    mkpath(dirname(path))
+    commit = _git_commit()
+    timestamp = string(now())
+    open(path, "a") do io
+        for r in _RESULTS
+            full = merge((; timestamp, commit), r)
+            println(io, _to_json_line(full))
+        end
+    end
+    println("Wrote ", length(_RESULTS), " results to ", path, " (commit ", commit, ")")
+    return path
+end
+
+# ===========================================================================
 # Accuracy reference: conjugate Normal-Normal model, y_i ~ Normal(mu, 1),
 # mu ~ Normal(0, 1). Same data-generation seed/procedure as
 # test/turing_comparison.jl's PracticalBayes side.
@@ -297,6 +351,8 @@ for (n, shapename) in shapes, T in precisions
     println(r_add.label, ": median=", r_add.median_s, "s  first_call=", r_add.first_call_s, "s")
     speed_results[(shapename, "$(T)_tilde")] = r_tilde
     speed_results[(shapename, "$(T)_addlogprob")] = r_add
+    record!(; package="Turing", layer="logdensity", model="normal", shape=shapename, precision=string(T), backend="none", r=r_tilde)
+    record!(; package="Turing", layer="logdensity_addlogprob", model="normal", shape=shapename, precision=string(T), backend="none", r=r_add)
 end
 
 gradient_results = Dict{Tuple{String,String,String},TimingResult}()
@@ -304,6 +360,7 @@ for (n, shapename) in shapes, T in precisions, (backend_name, adtype) in _AD_BAC
     r = bench_turing_gradient(T, n, backend_name, adtype)
     println(r.label, ": median=", r.median_s, "s  first_call=", r.first_call_s, "s")
     gradient_results[(shapename, "$T", backend_name)] = r
+    record!(; package="Turing", layer="gradient", model="normal", shape=shapename, precision=string(T), backend=backend_name, r)
 end
 
 nuts_results = Dict{Tuple{String,String},TimingResult}()
@@ -311,6 +368,7 @@ for (n, shapename) in shapes, T in precisions
     r = bench_turing_nuts(T, n)
     println(r.label, ": median=", r.median_s, "s  first_call=", r.first_call_s, "s")
     nuts_results[(shapename, "$T")] = r
+    record!(; package="Turing", layer="nuts", model="normal", shape=shapename, precision=string(T), backend="ForwardDiff", r)
 end
 
 manyparam_results = Dict{Tuple{String,String},TimingResult}()
@@ -319,6 +377,7 @@ for T in (Float64, Float32), (backend_name, adtype) in _AD_BACKENDS
     r = bench_turing_manyparam_gradient(200, 2000, backend_name, adtype)
     println(r.label, ": median=", r.median_s, "s  first_call=", r.first_call_s, "s")
     manyparam_results[("$T", backend_name)] = r
+    record!(; package="Turing", layer="gradient", model="manyparam", shape="K200_N2000", precision=string(T), backend=backend_name, r)
 end
 
 poisson_results = Dict{Int,TimingResult}()
@@ -326,7 +385,10 @@ for n in (2000, 50_000)
     r = bench_turing_poisson_density(5, n)
     println(r.label, ": median=", r.median_s, "s  first_call=", r.first_call_s, "s")
     poisson_results[n] = r
+    record!(; package="Turing", layer="logdensity", model="poisson", shape="k5_n$n", precision="Float64", backend="none", r)
 end
+
+write_history!()
 
 # ===========================================================================
 # Write the reference file. Plain Julia literals only — no Turing types

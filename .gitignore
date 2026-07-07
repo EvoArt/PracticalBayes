@@ -3,3 +3,8 @@ Manifest.toml
 *.jl.*.cov
 *.jl.mem
 /docs/build/
+/bench/report.html
+/bench/*_files/
+devlog.md
+plan.md
+later considerations.md
