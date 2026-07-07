@@ -89,10 +89,25 @@ macro model(expr)
     # fully-escaped quote produces invalid syntax ("escape (escape ...)").
     # Module-qualifying is the standard way to reach into our own package's
     # internals from inside an escaped quote without re-escaping.
+    # `Model.args` is always ONE flat NamedTuple, splatted POSITIONALLY into
+    # the evaluator by `evaluate` (`m.f(mode, acc, m.args...)`, model.jl) — so
+    # the evaluator itself takes every model argument positionally, keyword
+    # args included, in a fixed order (original positional args, then
+    # original keyword args by their declared order). Only the user-facing
+    # CONSTRUCTOR keeps the real `function name(...; kw...)` signature (so
+    # `coinflip(; N=5)` keeps working as call syntax); it repackages whatever
+    # it received into that same fixed positional order before handing off to
+    # `Model`. Bare `def[:kwargs]` on the evaluator would NOT work here: a
+    # positional splat of a NamedTuple can't bind to a `function f(; k)`
+    # keyword parameter.
+    eval_arg_names = vcat(map(_argsym, def[:args]), map(_argsym, def[:kwargs]))
     eval_def = Dict(
         :name => eval_name,
-        :args => [:(__mode__::PracticalBayes.AbstractEvalMode), :(__acc__::PracticalBayes.Accum), def[:args]...],
-        :kwargs => def[:kwargs],
+        :args => [
+            :(__mode__::PracticalBayes.AbstractEvalMode), :(__acc__::PracticalBayes.Accum),
+            eval_arg_names...,
+        ],
+        :kwargs => [],
         :whereparams => def[:whereparams],
         :body => quote
             $(body)
@@ -103,13 +118,14 @@ macro model(expr)
 
     # The user-facing constructor keeps the original argument list (no
     # __mode__/__acc__) and just packages the call args into a NamedTuple for
-    # `Model.args`. Missing/positional data vs parameters is NOT decided here
-    # — it's decided per tilde-site by `_tilde_expansion` below, using
-    # `argnames` (static, macro-time) plus `getcond` (runtime, but folds away
-    # for a concrete conditioning-pattern type).
+    # `Model.args`, in the SAME (positional-args-then-kwargs) order the
+    # evaluator above expects. Missing/positional data vs parameters is NOT
+    # decided here — it's decided per tilde-site by `_tilde_expansion` below,
+    # using `argnames` (static, macro-time) plus `getcond` (runtime, but folds
+    # away for a concrete conditioning-pattern type).
     ctor_args = def[:args]
     ctor_kwargs = def[:kwargs]
-    nt_pairs = [:($(_argsym(a)) = $(_argsym(a))) for a in ctor_args]
+    nt_pairs = [:($(a) = $(a)) for a in eval_arg_names]
 
     ctor_def = Dict(
         :name => name,
@@ -133,18 +149,40 @@ macro model(expr)
 end
 
 # Pulls the bare argument name out of either `x` or `x::T` argument syntax.
-# `splitdef`'s :args entries are Exprs like `:(x::Int)` for typed args.
-_argsym(a) = a isa Symbol ? a : (a isa Expr && a.head == :(::) ? a.args[1] : error("unsupported arg form: $a"))
+# `splitdef`'s :args entries are Exprs like `:(x::Int)` for typed positional
+# args; `:kwargs` entries are additionally either `Expr(:kw, x, default)`
+# (`x=default`) or `Expr(:kw, Expr(:(::), x, T), default)` (`x::T=default`)
+# for keyword args with a default value.
+function _argsym(a)
+    a isa Symbol && return a
+    if a isa Expr
+        a.head == :(::) && return a.args[1]
+        if a.head == :kw
+            lhs = a.args[1]
+            return lhs isa Symbol ? lhs : _argsym(lhs)
+        end
+    end
+    error("unsupported arg form: $a")
+end
 _argexpr(a) = _argsym(a)
 
-# The set of the model's own positional argument names, e.g. for
-# `@model function foo(y, n) ... end` this is `Set([:y, :n])`. Used only to
-# decide, at macro-expansion time, whether a bare-symbol tilde LHS *could* be
-# data (passed in as an argument, possibly `missing`) vs is definitely a
-# parameter (any other name — e.g. one only ever assigned inside the body).
+# The set of the model's own argument names — BOTH positional (`def[:args]`)
+# and keyword (`def[:kwargs]`, e.g. `@model function foo(; N::Int) ... end`)
+# — e.g. for `@model function foo(y, n) ... end` this is `Set([:y, :n])`.
+# Used only to decide, at macro-expansion time, whether a bare-symbol tilde
+# LHS *could* be data (passed in as an argument, possibly `missing`) vs is
+# definitely a parameter (any other name — e.g. one only ever assigned
+# inside the body). Keyword args must be included here for exactly the same
+# reason positional ones are: a model like `coinflip(; N::Int)` observing
+# `y ~ filldist(Bernoulli(p), N)` needs `N` recognized as "already a
+# concrete value", and a model taking data via a keyword arg needs that
+# argument's tilde sites (if any) treated as potentially-observed too.
 function _argnames(def)
     names = Symbol[]
     for a in get(def, :args, [])
+        push!(names, _argsym(a))
+    end
+    for a in get(def, :kwargs, [])
         push!(names, _argsym(a))
     end
     return Set(names)

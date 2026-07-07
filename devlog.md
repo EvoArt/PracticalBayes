@@ -7,7 +7,97 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
-## 2026-07-07 (latest) — automated benchmark history + report
+## 2026-07-07 (latest) — first PosteriorDB/tutorial model ports, real kwarg-model bug found + fixed
+
+Picked back up the deferred model-corpus work now that Turing-side parity
+and the benchmark history/report mechanism are done. Per the earlier plan:
+infra first (`filldist`-equivalent, `Flat`/`FlatPos` priors), then a
+representative slice of models, then check in before doing the full ~45+
+remaining low-effort models.
+
+### `filldist`/`arraydist`/`Flat`/`FlatPos`/`LogPoisson`/`BinomialLogit`
+
+Checked `product_distribution` (the underlying mechanism `filldist` wraps)
+against `Bijectors.VectorBijectors` first, before writing anything — it
+already works with zero PracticalBayes-side changes, because
+`from_linked_vec`/`to_linked_vec` build unconstrained transforms generically
+from any `Distribution`'s support and linked length, and `build_layout`
+never special-cases scalar vs array-valued sites. Same story for `Flat`/
+`FlatPos` (ordinary `Distribution` subtypes — Bijectors derives the
+transform from `minimum`/`maximum`) and `Truncated`. So the actual new code
+in `src/distributions.jl` is just: the two improper-prior distributions
+themselves (ported from Turing's `stdlib/distributions.jl`, since
+Distributions.jl doesn't define them), `filldist`/`arraydist` as one-line
+`product_distribution` wrappers (ditto, ported from DynamicPPL's
+`distribution_wrappers.jl`), and `LogPoisson`/`BinomialLogit` (log/logit-
+link reparameterized discrete likelihoods, needed by several GLM-family
+PosteriorDB models) — all verified against their reference Distributions.jl
+counterparts and via gradient-vs-finite-differences checks. 20 new tests in
+`test/distributions.jl`.
+
+### Real bug found: keyword-only `@model` arguments silently dropped
+
+Porting the TuringLang docs `coin-flipping` tutorial (`@model function
+coinflip(; N::Int) ... end`) surfaced a genuine compiler bug: `_argnames`
+and the constructor's NamedTuple-packaging in `compiler.jl` only ever
+iterated `def[:args]` (MacroTools `splitdef`'s positional-argument list),
+never `def[:kwargs]`. So `coinflip(; N=5)` silently produced a `Model` with
+an EMPTY `args` NamedTuple — `N` was invisible to the tilde-rewriter (any
+site referencing it would see an undefined variable or resolve to something
+unrelated in an enclosing scope) and never reached the generated evaluator
+at all. This had been latent since the compiler was first written; nothing
+in the existing test suite used a keyword-only model argument.
+
+Root cause of why the naive fix (just also iterate `def[:kwargs]`) isn't
+enough: `Model.args` is one flat `NamedTuple`, splatted **positionally**
+into the generated evaluator by `evaluate` (`m.f(mode, acc, m.args...)`,
+`model.jl`) — a positional splat can never bind to a `function f(; k)`-style
+keyword parameter on the callee. Fix: the generated evaluator now takes
+every model argument positionally (original positional args, then original
+keyword args, in that fixed order) — `def[:kwargs]` is intentionally NOT
+passed through to the evaluator's own `combinedef` call. Only the
+user-facing constructor keeps the real keyword-argument call syntax
+(`coinflip(; N=5)` still works exactly as written), and packages whatever it
+receives into `Model.args` in that same fixed order before handing off.
+Added a regression test (`test/compiler.jl`) covering keyword-only args, a
+mix of positional + keyword args, and that the resulting `Model.args`
+actually contains the keyword value (not just "doesn't crash").
+
+### Model corpus: `bench/corpus/posteriordb/` and `bench/corpus/tutorials/`
+
+Ported 9 models spanning the TuringPosteriorDB family list (conjugate
+scalar: `Rate_1`; `filldist` + `MvNormal` array-observe regression: `blr`;
+hierarchical `MvNormal` centered/non-centered with `:=` feeding a further
+observe: `eight_schools_centered`/`_noncentered`; nonlinear regression with
+`:=` used only for reporting: `dugongs`; discrete Poisson GLM with log-link
++ `:=`: `GLM_Poisson`; `Flat`-prior interaction regression:
+`kidscore_interaction`; `Flat`/`FlatPos` minimal regression: `earn_height`;
+`Flat`-prior logistic GLM via `BernoulliLogit`: `wells_dae`) and 6 models
+from the TuringLang docs tutorials (`coin-flipping`, `bayesian-linear-
+regression`, `bayesian-logistic-regression`, `bayesian-poisson-regression`,
+`multinomial-logistic-regression`, `bayesian-time-series-analysis`). All 15
+pass a structural smoke test (`run_smoke_tests.jl` in each corpus
+directory): logdensity finite, ForwardDiff gradient matches central finite
+differences. No original PosteriorDB/tutorial datasets were fetched (would
+need TuringPosteriorDB.jl, a Turing-ecosystem package — same "can't coexist
+with PracticalBayes" constraint as everything else Turing-side this
+session); each model instead gets synthetic, shape/type-matched data,
+sufficient to prove the model STRUCTURE (every distribution/syntax feature
+it uses) runs correctly, not to replicate the original posterior exactly.
+
+Porting note, not a bug: three of the six tutorials (`bayesian-logistic-
+regression`, `bayesian-poisson-regression`, `multinomial-logistic-
+regression`) originally write `y[i] ~ dist` inside a `for` loop over
+already-observed data `y`. PracticalBayes' `x[i] ~ dist` is assume-only BY
+DESIGN (documented in `compiler.jl`: it always draws into a pre-declared
+container) — observing element-by-element against pre-bound data is exactly
+what `.~` is for. Ported all three to a vectorized `.~` over the whole
+likelihood-parameter array instead (for `multinomial_logistic_regression`,
+`Categorical.(vs)` — an array of DISTINCT per-row distributions — exercises
+`tilde_dot`'s `sum(logpdf.(dist_bcast, y))` fallback path, not just the
+common scalar-broadcast `loglikelihood` fast path).
+
+## 2026-07-07 — automated benchmark history + report
 
 Previously, benchmark results only existed as terminal output and one
 hand-written HTML artifact snapshot — no way to tell if a change regressed

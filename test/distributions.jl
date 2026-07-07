@@ -5,7 +5,7 @@
 # support/linked length, and `build_layout`/`tilde.jl` never special-case
 # scalar vs vector-valued sites).
 
-using Distributions: Normal, Exponential, product_distribution, logpdf
+using Distributions: Normal, Exponential, Poisson, Binomial, Uniform, product_distribution, logpdf, logistic
 using ADTypes: AutoForwardDiff
 import LogDensityProblems
 
@@ -101,6 +101,45 @@ end
     m = blr_model(X, y)
     layout, θ0, store0 = build_layout(m; init=(; sigma=1.0))
     @test layout.dim == 5  # 4 (beta) + 1 (sigma)
+
+    ldf = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0)
+    val, grad = LogDensityProblems.logdensity_and_gradient(ldf, θ0)
+    @test isfinite(val)
+
+    h = 1e-6
+    fd_grad = similar(θ0)
+    for i in eachindex(θ0)
+        θp = copy(θ0); θp[i] += h
+        θm = copy(θ0); θm[i] -= h
+        fd_grad[i] = (LogDensityProblems.logdensity(ldf, θp) - LogDensityProblems.logdensity(ldf, θm)) / (2h)
+    end
+    @test grad ≈ fd_grad atol = 1e-3
+end
+
+@testset "distributions.jl: LogPoisson/BinomialLogit match their base distributions" begin
+    for logλ in (-1.0, 0.0, 1.5)
+        d, d0 = LogPoisson(logλ), Poisson(exp(logλ))
+        @test all(k -> logpdf(d, k) ≈ logpdf(d0, k), 0:10)
+    end
+    for logitp in (-2.0, 0.0, 1.0)
+        d, d0 = BinomialLogit(10, logitp), Binomial(10, logistic(logitp))
+        @test all(k -> logpdf(d, k) ≈ logpdf(d0, k), 0:10)
+    end
+end
+
+@testset "distributions.jl: LogPoisson as a discrete `.~` observe likelihood with `:=` (PosteriorDB GLM_Poisson pattern)" begin
+    @model function poisson_glm_model(year, C)
+        alpha ~ Uniform(-20, 20)
+        beta1 ~ Uniform(-10, 10)
+        log_lambda := alpha .+ beta1 .* year
+        C .~ LogPoisson.(log_lambda)
+    end
+    year = collect(1.0:10)
+    true_alpha, true_beta1 = 0.5, 0.1
+    C = Float64.(rand.(Poisson.(exp.(true_alpha .+ true_beta1 .* year))))
+    m = poisson_glm_model(year, C)
+    layout, θ0, store0 = build_layout(m; init=(; alpha=0.0, beta1=0.1))
+    @test layout.dim == 2
 
     ldf = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0)
     val, grad = LogDensityProblems.logdensity_and_gradient(ldf, θ0)

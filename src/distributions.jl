@@ -63,3 +63,51 @@ filldist(dist::Distributions.Distribution, dim::Int, dims::Int...) = Distributio
 identically distributed) sub-distributions as one array-valued distribution.
 """
 arraydist(dists::AbstractArray{<:Distributions.Distribution}) = Distributions.product_distribution(dists)
+
+# Discrete-likelihood reparameterizations, again matching Turing's
+# `stdlib/distributions.jl` verbatim (logit/log-linked parameterizations of
+# Binomial/Poisson are common in PosteriorDB's GLM-family models). Discrete,
+# so these only ever appear as observe-site likelihoods (never behind a
+# `~` prior needing a bijector) — no layout-side work needed at all, only
+# the `logpdf` definition itself.
+
+"""
+    LogPoisson(logλ)
+
+`Poisson` reparameterized by log-rate: `logpdf(LogPoisson(logλ), k)` for
+`k = 0, 1, 2, ...`.
+"""
+struct LogPoisson{T<:Real} <: Distributions.DiscreteUnivariateDistribution
+    logλ::T
+end
+
+Base.minimum(::LogPoisson) = 0
+Base.maximum(::LogPoisson) = Inf
+Base.rand(rng::AbstractRNG, d::LogPoisson) = rand(rng, Distributions.Poisson(exp(d.logλ)))
+function Distributions.logpdf(d::LogPoisson, k::Real)
+    insupp = Distributions.insupport(d, k)
+    kk = insupp ? round(Int, k) : 0
+    logp = kk * d.logλ - exp(d.logλ) - Distributions.logfactorial(kk)
+    return insupp ? logp : oftype(logp, -Inf)
+end
+
+"""
+    BinomialLogit(n, logitp)
+
+`Binomial` reparameterized by the logit of the success probability.
+"""
+struct BinomialLogit{T<:Real} <: Distributions.DiscreteUnivariateDistribution
+    n::Int
+    logitp::T
+end
+
+Base.minimum(::BinomialLogit) = 0
+Base.maximum(d::BinomialLogit) = d.n
+Base.rand(rng::AbstractRNG, d::BinomialLogit) = rand(rng, Distributions.Binomial(d.n, Distributions.logistic(d.logitp)))
+function Distributions.logpdf(d::BinomialLogit, k::Real)
+    insupp = Distributions.insupport(d, k)
+    kk = insupp ? round(Int, k) : 0
+    logp = -(log1p(d.n) + d.n * Distributions.StatsFuns.log1pexp(d.logitp)) + kk * d.logitp -
+           Distributions.StatsFuns.logbeta(d.n - kk + 1, kk + 1)
+    return insupp ? logp : oftype(logp, -Inf)
+end

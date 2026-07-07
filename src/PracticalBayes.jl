@@ -22,7 +22,7 @@ include("logdensity.jl")
 include("optimize.jl")
 
 export @model, Model, condition, decondition
-export Flat, FlatPos, filldist, arraydist
+export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction

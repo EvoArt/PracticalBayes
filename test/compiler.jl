@@ -4,7 +4,7 @@
 # log-density MATH is checked in layout.jl/logdensity.jl against hand-derived
 # values, not here.
 
-using Distributions: Normal, Exponential, logpdf
+using Distributions: Normal, Exponential, Beta, Bernoulli, logpdf
 using ADTypes: AutoForwardDiff
 import LogDensityProblems
 
@@ -149,4 +149,48 @@ end
     z_val = mu_val + 0.5
     expected = logpdf(Normal(0, 1), mu_val) + logpdf(Normal(0, 1), z_val)
     @test logjoint(acc) ≈ expected
+end
+
+@testset "compiler.jl: keyword-only model arguments (regression: kwargs silently dropped from Model.args)" begin
+    # Found while porting the TuringLang docs `coin-flipping` tutorial, whose
+    # model is declared `@model function coinflip(; N::Int) ... end`. Before
+    # the fix, `_argnames`/the constructor's NamedTuple-building only ever
+    # looked at `def[:args]` (positional), never `def[:kwargs]` — so
+    # `coinflip(; N=5)` silently produced a `Model` with an EMPTY `args`
+    # NamedTuple, `N` was never recognized as "already a concrete value" by
+    # the tilde-rewriter, and any tilde site referencing `N` would see it as
+    # `UndefVarError` or, worse, silently wrong. `Model.args` is one flat
+    # NamedTuple splatted POSITIONALLY into the generated evaluator
+    # (`m.f(mode, acc, m.args...)`, model.jl); a positional splat can't bind
+    # to a `function f(; k)`-style keyword parameter, so the fix makes the
+    # generated evaluator take kwargs positionally too (only the user-facing
+    # constructor keeps the real keyword-argument call syntax).
+    @model function kwmodel(; N::Int)
+        p ~ Beta(1, 1)
+        y ~ filldist(Bernoulli(p), N)
+        return y
+    end
+    m = kwmodel(; N=5)
+    @test m.args == (; N=5)  # was `NamedTuple()` before the fix
+
+    kwmodel(y::AbstractVector{<:Real}) = kwmodel(; N=length(y)) | (; y)
+    y = [1.0, 0.0, 1.0, 1.0, 0.0]
+    m2 = kwmodel(y)
+    layout, θ0, store0 = build_layout(m2; init=(p=0.5,))
+    @test layout.dim == 1  # only `p` — `y`/`N` are both data, not parameters
+
+    ldf = LogDensityFunction(m2, layout, store0, AutoForwardDiff(); θ0=θ0)
+    val, grad = LogDensityProblems.logdensity_and_gradient(ldf, θ0)
+    @test isfinite(val)
+    @test length(grad) == 1
+
+    # mixed positional + keyword args: both must land in `Model.args`, in
+    # positional-args-then-kwargs order (matching the generated evaluator).
+    @model function mixedmodel(x; N::Int)
+        mu ~ Normal(0, 1)
+        z ~ Normal(mu + x, 1)
+        return N
+    end
+    m3 = mixedmodel(1.0; N=3)
+    @test m3.args == (x=1.0, N=3)
 end
