@@ -5,6 +5,7 @@ using PracticalBayes
     include("compiler.jl")
     include("layout.jl")
     include("logdensity.jl")
+    include("distributions.jl")
     include("ad_backends.jl")
     include("optimize.jl")
     include("turing_comparison.jl")

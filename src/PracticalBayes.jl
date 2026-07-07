@@ -12,6 +12,7 @@ using AbstractPPL: AbstractPPL
 using ForwardDiff: ForwardDiff
 
 include("accumulator.jl")
+include("distributions.jl")
 include("modes.jl")
 include("layout.jl")
 include("model.jl")
@@ -21,6 +22,7 @@ include("logdensity.jl")
 include("optimize.jl")
 
 export @model, Model, condition, decondition
+export Flat, FlatPos, filldist, arraydist
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction
