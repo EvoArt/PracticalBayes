@@ -1,0 +1,49 @@
+name: Benchmark Sweep
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - 'README.md'
+      - 'benchmarks/results/**'
+      - 'benchmarks/figures/**'
+      - 'figures/**'
+
+permissions:
+  contents: write
+
+jobs:
+  benchmark:
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+
+      - uses: julia-actions/cache@v2
+
+      - name: Instantiate benchmark environment
+        run: julia --project=benchmarks -e "using Pkg; Pkg.instantiate(); Pkg.develop(PackageSpec(path=pwd()))"
+
+      - name: Run 5x5 benchmark sweep + plots
+        run: julia --project=benchmarks benchmarks/sweep.jl
+
+      - name: Regenerate README benchmark tables
+        run: julia --project=benchmarks benchmarks/make_readme_table.jl
+
+      - name: Commit benchmark artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md benchmarks/results/sweep.json benchmarks/figures/*.png
+          if git diff --cached --quiet; then
+            echo "No benchmark changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(bench): update benchmark sweep outputs [skip ci]"
+          git push
