@@ -1,6 +1,8 @@
 using Documenter
 using PracticalBayes
 
+# Documenter configuration
+
 DocMeta.setdocmeta!(PracticalBayes, :DocTestSetup, :(using PracticalBayes); recursive=true)
 
 makedocs(
