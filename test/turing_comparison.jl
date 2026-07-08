@@ -1,16 +1,20 @@
 # Speed and accuracy comparisons against Turing.jl, per user request.
 #
-# IMPORTANT: this does NOT load Turing. Turing 0.45 (newest released)
-# depends on AbstractPPL 0.14.2, while PracticalBayes depends on AbstractPPL
-# 0.15.x (the VectorBijectors-based Bijectors API the whole layout system is
-# built on) — these two genuinely cannot be loaded in the same Julia
-# process, in any environment, with any amount of compat-bound tuning. So
-# instead of a live side-by-side run, Turing's numbers were captured ONCE by
-# `test/comparison_env/generate_turing_reference.jl` (a separate, standalone
-# environment that has Turing but not PracticalBayes) and frozen into
-# `test/turing_reference.jl` as plain Julia literals. This file loads that
-# reference and checks PracticalBayes against it — no Turing dependency at
-# test time, ever.
+# IMPORTANT: this does NOT load Turing, even though Turing now CAN be
+# loaded alongside PracticalBayes (see the top-level Project.toml's
+# `Turing = "0.45"` test-only compat entry — this used to be impossible
+# because PracticalBayes' own compat bound had drifted to requiring
+# AbstractPPL 0.15.x via an unnecessarily wide Bijectors range; Bijectors
+# 0.15.24 already has the full VectorBijectors API this package needs and
+# only requires AbstractPPL 0.14, which is what Turing/DynamicPPL use too).
+# Turing's dependency tree is large and slow to precompile, so it's still
+# kept OUT of the default `Pkg.test()` loop: Turing's numbers were captured
+# ONCE by `test/comparison_env/generate_turing_reference.jl` (a separate
+# environment, still useful for isolating this script's own dependency
+# footprint even though it's no longer strictly required for coexistence)
+# and frozen into `test/turing_reference.jl` as plain Julia literals. This
+# file loads that reference and checks PracticalBayes against it — no
+# Turing dependency at ordinary test time.
 #
 # Regenerate `turing_reference.jl` (by rerunning the generator script in
 # test/comparison_env/) only if these reference MODELS themselves change;

@@ -7,7 +7,58 @@ architecture writeup this log elaborates on.
 
 See "later considerations.md" for some vague future wish list.
 
-## 2026-07-07 (latest) — NUTS methodology fix, Enzyme re-enabled with subprocess isolation, report/heatmap redesign
+## 2026-07-08 (latest) — Turing and PracticalBayes CAN coexist after all: fixed a self-inflicted compat bound
+
+User asked directly why Turing and PracticalBayes couldn't be loaded in the
+same environment, after the earlier explanation ("Turing 0.45 depends on
+AbstractPPL 0.14.2, PracticalBayes needs AbstractPPL 0.15.x, genuinely
+unresolvable") was taken at face value and repeated in several file headers.
+Investigating properly (rather than re-stating the earlier finding) found
+the "genuinely unresolvable" framing was wrong — it was a self-inflicted
+compat bound, not a real API conflict.
+
+**Root cause**: PracticalBayes' own `Project.toml` had `Bijectors = "0.15.24,
+0.16"` and `AbstractPPL = "0.15"`. The `0.16` alternative let the resolver
+drift up to Bijectors 0.16.1 — the version that first bumped ITS OWN
+`AbstractPPL` compat to `"0.15"`. But **Bijectors 0.15.24 already has the
+full `VectorBijectors` API** this package's `Layout` system needs
+(`from_linked_vec`/`to_linked_vec`/`linked_vec_length`/`optic_vec`,
+confirmed by grepping its installed source directly) and only requires
+`AbstractPPL = "0.14"` — exactly the version DynamicPPL/Turing have used for
+every release up to and including the current one (0.41.8). Checked this
+properly rather than assuming: DynamicPPL's `AbstractPPL` compat bound
+across every installed version (0.20.2 through 0.41.8) climbed 0.5 → 0.10 →
+0.11 → 0.13 → 0.14 and never crossed into 0.15 — so no Turing version, old
+or new, would ever have resolved against PracticalBayes' unnecessarily wide
+Bijectors range. The "Turing 0.45 specifically" framing in the original
+investigation was a red herring; the actual fix had nothing to do with
+which Turing version to pick.
+
+**Fix**: tightened `Bijectors = "0.15.24, 0.16"` → `"0.15.24"` (dropping the
+branch that pulled in the incompatible Bijectors 0.16.x/AbstractPPL 0.15.x
+combination) and relaxed `AbstractPPL = "0.15"` → `"0.14, 0.15"`. Confirmed
+via direct testing (not just resolver theory): PracticalBayes reinstantiates
+and precompiles cleanly on Bijectors 0.15.24 / AbstractPPL 0.14.2; the full
+`Pkg.test()` suite (131/131) passes unchanged on this older combination;
+`Turing = "0.45"` now installs directly into PracticalBayes' own
+`Project.toml` (as a test-only `[extras]`/`[targets]` dependency, not a
+runtime one) and precompiles alongside PracticalBayes with zero conflicts.
+
+**What this does NOT change**: `test/comparison_env/` and the frozen
+`turing_reference.jl`/`history_corpus_turing.jsonl` mechanism are KEPT —
+Turing's dependency tree is large and slow to precompile, so pulling it into
+every ordinary `Pkg.test()` run would slow down the default test loop for a
+comparison that's only useful when the reference MODELS themselves change.
+The separate-environment scripts are no longer strictly REQUIRED for
+coexistence, but remain the right tool for keeping Turing's footprint out of
+day-to-day test runs. Updated the stale "genuinely cannot be loaded in the
+same process, in any environment, with any compat tuning" header comments
+in `test/turing_comparison.jl`, `test/comparison_env/generate_turing_reference.jl`,
+and `test/comparison_env/corpus_bench_turing.jl` to reflect this — those
+comments had been treated as settled fact and repeated verbatim across
+multiple files without being re-checked.
+
+## 2026-07-07 — NUTS methodology fix, Enzyme re-enabled with subprocess isolation, report/heatmap redesign
 
 Follow-up to the corpus-wide benchmark entry below, triggered by the user
 noticing `normal/large` NUTS had apparently gotten slower than Turing between

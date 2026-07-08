@@ -340,6 +340,12 @@ end
 # its internal step-size type parameter to `typeof(δ)` — passing a Float64
 # `δ` with a Float32 position vector fails inside step-size adaptation; this
 # is an AdvancedHMC requirement, not something this package controls).
+#
+# n_adapts/discard_initial passed EXPLICITLY, matching Turing's own default
+# resolution (`n_adapts = min(1000, N÷2)`, discarding all of it) rather than
+# AdvancedHMC's much shorter bare default (`n_adapts = min(N÷10, 1000)`) —
+# see bench/corpus_bench_worker.jl's matching comment for why this
+# alignment is what "PB and Turing doing the same thing" actually requires.
 # ===========================================================================
 
 function bench_nuts(::Type{T}, n; n_samples=1000, reps=5) where {T<:Real}
@@ -349,7 +355,8 @@ function bench_nuts(::Type{T}, n; n_samples=1000, reps=5) where {T<:Real}
     ldf = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0)
     ldm = AbstractMCMC.LogDensityModel(ldf)
     δ = T(0.8)
-    run() = AbstractMCMC.sample(Random.Xoshiro(1), ldm, AdvancedHMC.NUTS(δ), n_samples; initial_params=θ0, progress=false)
+    n_adapts = n_samples ÷ 2
+    run() = AbstractMCMC.sample(Random.Xoshiro(1), ldm, AdvancedHMC.NUTS(δ), n_samples; n_adapts=n_adapts, discard_initial=n_adapts, initial_params=θ0, progress=false)
     return time_reps(run, "NUTS $n_samples samples (T=$T, n=$n)"; reps=reps)
 end
 
@@ -364,13 +371,14 @@ if !isnothing(Base.find_package("Mooncake"))
     @eval import Mooncake
     push!(_AD_BACKENDS, "Mooncake" => AutoMooncake(; config=nothing))
 end
-if !isnothing(Base.find_package("ReverseDiff"))
-    @eval import ReverseDiff
-    push!(_AD_BACKENDS, "ReverseDiff" => AutoReverseDiff())
-end
+# ReverseDiff dropped entirely — redundant with Mooncake (both reverse-mode;
+# Mooncake is the actively-developed one this package's own test suite
+# already leans on), matching the corpus-wide benchmark scripts.
 if !isnothing(Base.find_package("Enzyme"))
     @eval import Enzyme
-    push!(_AD_BACKENDS, "Enzyme" => AutoEnzyme())
+    # set_runtime_activity — see bench/corpus_bench_worker.jl's matching
+    # comment: bare AutoEnzyme() defaults to runtime-activity analysis OFF.
+    push!(_AD_BACKENDS, "Enzyme" => AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse)))
 end
 
 # ===========================================================================

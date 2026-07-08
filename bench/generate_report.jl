@@ -74,6 +74,15 @@ function load_jsonl(path)
     return [_parse_json_line(line) for line in eachline(path) if !isempty(strip(line))]
 end
 
+# ReverseDiff was dropped from every benchmark script's AD-backend list, but
+# history.jsonl is append-only, so old ReverseDiff records from before the
+# drop still linger and would otherwise "win" as a stale "latest" entry for
+# a backend the current tooling no longer runs at all. Filtered out at load
+# time rather than deleted from the history files, since the raw history is
+# still a valid regression record.
+const _DROPPED_BACKENDS = ("ReverseDiff",)
+_backend_current(r) = !(r["backend"] in _DROPPED_BACKENDS)
+
 # ===========================================================================
 # Formatting helpers
 # ===========================================================================
@@ -105,6 +114,11 @@ end
 
 pb_records = load_jsonl(PB_HISTORY)
 turing_records = load_jsonl(TURING_HISTORY)
+
+# See the corpus section below for why dropped backends are filtered here
+# rather than left to linger as stale "latest" entries.
+filter!(_backend_current, pb_records)
+filter!(_backend_current, turing_records)
 
 pb_latest = latest_by_key(pb_records)
 turing_latest = latest_by_key(turing_records)
@@ -213,6 +227,9 @@ end
 pb_corpus = load_jsonl(PB_CORPUS_HISTORY)
 turing_corpus = load_jsonl(TURING_CORPUS_HISTORY)
 
+filter!(_backend_current, pb_corpus)
+filter!(_backend_current, turing_corpus)
+
 corpus_key(r) = (r["corpus"], r["model"], r["layer"], r["precision"], r["backend"])
 function latest_by_corpus_key(records)
     out = Dict{Tuple,Dict{String,Any}}()
@@ -236,7 +253,7 @@ if !isempty(pb_corpus)
         println(io, "Latest Turing corpus run (representative subset): **", latest_turing_corpus_run["timestamp"], "**, commit `", _fmt_commit(latest_turing_corpus_run["commit"]), "`, ", length(unique(r["model"] for r in turing_corpus)), " distinct models.")
     end
     println(io)
-    println(io, "Every model in `bench/corpus/posteriordb/` and `bench/corpus/tutorials/` (see `bench/corpus_bench.jl`), across ForwardDiff/Mooncake/Enzyme (ReverseDiff dropped — redundant with Mooncake), Float64 and Float32, on three layers (logdensity, gradient, a 1000-sample NUTS run). Turing only covers a representative subset (~20 models spanning each structural family — porting all ~55 to Turing as well was judged not worth the effort vs. the coverage gained). Each model runs in its own subprocess (`bench/corpus_bench_worker.jl`), so one model crashing (Enzyme has genuinely done this on certain type combinations) only loses that model's results, not the whole sweep.")
+    println(io, "Every model in `bench/corpus/posteriordb/` and `bench/corpus/tutorials/` (see `bench/corpus_bench.jl`), across ForwardDiff/Mooncake/Enzyme (ReverseDiff dropped entirely — redundant with Mooncake), Float64 and Float32, on three layers: logdensity, gradient, and a 500-sample NUTS run (250 adaptation steps discarded, matching Turing's own default `n_adapts = N÷2` resolution so both sides run the same total number of transitions) — NUTS is now swept across every AD backend too, not just ForwardDiff. Turing only covers a representative subset (~20 models spanning each structural family — porting all ~55 to Turing as well was judged not worth the effort vs. the coverage gained). Each model runs in its own subprocess (`bench/corpus_bench_worker.jl`), so one model crashing (Enzyme has genuinely done this on certain type combinations) only loses that model's results, not the whole sweep.")
     println(io)
 
     for layer in ("logdensity", "gradient", "nuts")

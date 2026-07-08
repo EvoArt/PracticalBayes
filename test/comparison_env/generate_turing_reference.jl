@@ -3,14 +3,20 @@
 # Julia source file of literal numbers that `test/turing_comparison.jl` reads
 # back and compares against, WITHOUT ever loading Turing itself.
 #
-# Why this exists at all: Turing 0.45 (newest released) depends on
-# AbstractPPL 0.14.2, but PracticalBayes depends on AbstractPPL 0.15.x (the
-# VectorBijectors-based Bijectors API the whole layout system is built on) —
-# these two genuinely cannot be loaded in the same Julia process, in any
-# environment, with any compat tuning. So instead of a live side-by-side
-# comparison, Turing's numbers are captured once here and frozen into a file
-# PracticalBayes' own test suite checks against later, in a separate process
-# that never touches Turing at all.
+# Why this exists at all: this used to be a hard requirement (Turing/
+# DynamicPPL depend on AbstractPPL 0.14.x, and PracticalBayes's own
+# Project.toml compat bound had drifted up to requiring AbstractPPL 0.15.x —
+# purely because it allowed Bijectors 0.16, which is the version that first
+# bumped ITS OWN AbstractPPL compat to 0.15). That drift has since been
+# fixed (Bijectors 0.15.24 already has the full VectorBijectors API
+# PracticalBayes needs, and only requires AbstractPPL 0.14) — Turing now
+# installs directly into PracticalBayes' own `Project.toml` as a test-only
+# dependency with zero conflicts; see the top-level Project.toml's
+# `Turing = "0.45"` compat entry. This separate-environment/frozen-numbers
+# setup is kept anyway, since running the Turing side inline in every
+# ordinary `Pkg.test()` would add Turing's full (large, slow-to-precompile)
+# dependency tree to the default test loop for a comparison that only
+# matters when the reference MODELS themselves change.
 #
 # Regenerate this file (by rerunning this script in test/comparison_env/)
 # only if the reference MODELS themselves change; ordinary PracticalBayes
@@ -235,13 +241,14 @@ if !isnothing(Base.find_package("Mooncake"))
     @eval import Mooncake
     push!(_AD_BACKENDS, "Mooncake" => AutoMooncake(; config=nothing))
 end
-if !isnothing(Base.find_package("ReverseDiff"))
-    @eval import ReverseDiff
-    push!(_AD_BACKENDS, "ReverseDiff" => AutoReverseDiff())
-end
+# ReverseDiff dropped entirely — redundant with Mooncake (both reverse-mode;
+# Mooncake is the actively-developed one this package's own test suite
+# already leans on), matching the corpus-wide benchmark scripts.
 if !isnothing(Base.find_package("Enzyme"))
     @eval import Enzyme
-    push!(_AD_BACKENDS, "Enzyme" => AutoEnzyme())
+    # set_runtime_activity — see bench/corpus_bench_worker.jl's matching
+    # comment: bare AutoEnzyme() defaults to runtime-activity analysis OFF.
+    push!(_AD_BACKENDS, "Enzyme" => AutoEnzyme(; mode=Enzyme.set_runtime_activity(Enzyme.Reverse)))
 end
 
 function bench_turing_gradient(T, n, backend_name, adtype; reps=30)
@@ -262,13 +269,19 @@ end
 # constructor doesn't require a type-matched acceptance target (Turing
 # handles the promotion internally, consistent with the Float64-promotion
 # finding above).
+#
+# n_adapts passed EXPLICITLY as n_samples÷2 (Turing's own default resolution
+# for a bare `NUTS(0.8)` anyway, but spelled out here so it visibly matches
+# bench/suite.jl's now-explicit PB-side value rather than relying on two
+# different packages' defaults happening to agree).
 # ===========================================================================
 
 function bench_turing_nuts(T, n; n_samples=1000, reps=5)
     rng_local = StableRNG(n + (T == Float32 ? 1 : 0) + 300)
     y = T.(randn(rng_local, n))
     model = density_model(T, y)
-    run() = Turing.sample(StableRNG(1), model, Turing.NUTS(0.8), n_samples; progress=false)
+    n_adapts = n_samples ÷ 2
+    run() = Turing.sample(StableRNG(1), model, Turing.NUTS(n_adapts, 0.8), n_samples; progress=false)
     return time_reps(run, "Turing NUTS $n_samples samples (T=$T, n=$n)"; reps=reps)
 end
 

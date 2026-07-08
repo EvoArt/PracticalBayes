@@ -2,8 +2,11 @@
 # REPRESENTATIVE SUBSET (~20 of the 53) of the model corpus on Turing, one
 # per structural family, across every available AD backend and both
 # Float64/Float32, on the same three layers (logdensity, gradient, NUTS).
-# Run from THIS directory's own environment (Turing/PracticalBayes can
-# never coexist — see this file's siblings for the full story):
+# Run from THIS directory's own environment (kept separate from the main
+# package env even though Turing/PracticalBayes CAN now coexist in one
+# environment — see the top-level Project.toml's `Turing = "0.45"` compat
+# entry and this file's siblings for the full story — mainly so this
+# script's own dependency footprint stays isolated):
 #   julia --project=. corpus_bench_turing.jl
 #
 # Models are near-verbatim ports of the SAME PracticalBayes corpus models
@@ -577,18 +580,29 @@ function bench_one_model(corpus, name, modelfn; reps=8, nuts_samples=500)
             end
         end
 
-        try
-            # Same "1 short compile chain (untimed) + 1 timed chain at the
-            # real sample count" pattern as bench/corpus_bench_worker.jl —
-            # see that file's comment for why multiple full-length reps
-            # aren't worth the wall-clock cost at this sample count/model count.
-            Turing.sample(Random.Xoshiro(1), model, Turing.NUTS(0.8), 20; progress=false)
-            first_call_s = @elapsed Turing.sample(Random.Xoshiro(1), model, Turing.NUTS(0.8), nuts_samples; progress=false)
-            t = @elapsed Turing.sample(Random.Xoshiro(2), model, Turing.NUTS(0.8), nuts_samples; progress=false)
-            r = TimingResult("NUTS ($T)", first_call_s, t, t, t, 0.0, 1)
-            record!(; corpus, model=name, layer="nuts", precision=string(T), backend="ForwardDiff", r)
-        catch e
-            println(rpad("$corpus/$name", 40), "  [$T] NUTS FAILED — ", _trunc_err(e))
+        # Same "1 short compile chain (untimed) + 1 timed chain at the real
+        # sample count" pattern as bench/corpus_bench_worker.jl. n_adapts and
+        # discard_initial passed EXPLICITLY (matching Turing's own default
+        # resolution of `n_adapts = min(1000, N÷2)`, `discard_initial =
+        # n_adapts`) so both sides run the identical total-transitions /
+        # kept-samples definition — see bench/corpus_bench_worker.jl's
+        # matching comment for why this alignment matters (PB previously
+        # used AdvancedHMC's much shorter default adaptation budget, making
+        # it look far slower than Turing on hierarchical models when the gap
+        # was actually under-adaptation, not raw eval speed). Swept across
+        # every available AD backend, matching the gradient layer.
+        for (bname, adtype) in _AD_BACKENDS
+            try
+                n_adapts_compile = 10
+                n_adapts = nuts_samples ÷ 2
+                Turing.sample(Random.Xoshiro(1), model, Turing.NUTS(n_adapts_compile, 0.8; adtype=adtype), 20; progress=false)
+                first_call_s = @elapsed Turing.sample(Random.Xoshiro(1), model, Turing.NUTS(n_adapts, 0.8; adtype=adtype), nuts_samples; progress=false)
+                t = @elapsed Turing.sample(Random.Xoshiro(2), model, Turing.NUTS(n_adapts, 0.8; adtype=adtype), nuts_samples; progress=false)
+                r = TimingResult("NUTS ($T)", first_call_s, t, t, t, 0.0, 1)
+                record!(; corpus, model=name, layer="nuts", precision=string(T), backend=bname, r)
+            catch e
+                println(rpad("$corpus/$name", 40), "  [$T/$bname] NUTS FAILED — ", _trunc_err(e))
+            end
         end
     end
 end

@@ -69,6 +69,15 @@ end
 pb = load_jsonl(PB_CORPUS_HISTORY)
 turing = load_jsonl(TURING_CORPUS_HISTORY)
 
+# ReverseDiff was dropped from every benchmark script's AD-backend list, but
+# history.jsonl is append-only, so old ReverseDiff records from before the
+# drop still linger and would otherwise surface as a stale ghost column —
+# filtered out at load time rather than deleted from the history file.
+const _DROPPED_BACKENDS = ("ReverseDiff",)
+_backend_current(r) = !(r["backend"] in _DROPPED_BACKENDS)
+filter!(_backend_current, pb)
+filter!(_backend_current, turing)
+
 corpus_key(r) = (r["corpus"], r["model"], r["layer"], r["precision"], r["backend"])
 function latest_by_key(records)
     out = Dict{Tuple,Dict{String,Any}}()
@@ -84,12 +93,12 @@ turing_latest = latest_by_key(turing)
 # Columns: every (layer, backend) pair present in the PB data, ordered
 # logdensity, then gradient (ForwardDiff, Mooncake, Enzyme), then nuts.
 _layer_order = Dict("logdensity" => 0, "gradient" => 1, "nuts" => 2)
-_backend_order = Dict("none" => 0, "ForwardDiff" => 1, "Mooncake" => 2, "Enzyme" => 3, "ReverseDiff" => 4)
+_backend_order = Dict("none" => 0, "ForwardDiff" => 1, "Mooncake" => 2, "Enzyme" => 3)
 columns = sort(
     unique((k[3], k[5]) for k in keys(pb_latest));
     by=c -> (_layer_order[c[1]], get(_backend_order, c[2], 99)),
 )
-col_label(layer, backend) = backend == "none" ? layer : "$layer\n$backend"
+col_label(layer, backend) = backend == "none" ? layer : "$layer\\n$backend"
 
 # Rows: every distinct model that has a Turing counterpart for at least one
 # column (models with no Turing data at all wouldn't have any ratio to

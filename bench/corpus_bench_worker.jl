@@ -107,12 +107,12 @@ function _load_corpus_file(path)
 end
 
 # ===========================================================================
-# AD backends. ReverseDiff dropped per user request (redundant with
-# Mooncake — both reverse-mode, Mooncake is the actively-developed one this
-# package's test suite already leans on). Enzyme RE-ENABLED (see
-# corpus_bench.jl's driver-level comment): subprocess isolation means a
-# per-model Enzyme crash now only loses that one model's results, not the
-# whole sweep.
+# AD backends. ReverseDiff dropped entirely (redundant with Mooncake — both
+# reverse-mode, Mooncake is the actively-developed one this package's test
+# suite already leans on). Enzyme RE-ENABLED (see corpus_bench.jl's
+# driver-level comment): subprocess isolation means a per-model Enzyme crash
+# now only loses that one model's results, not the whole sweep. Used for
+# BOTH the gradient layer and (see bench_nuts below) the NUTS layer.
 # ===========================================================================
 
 const _AD_BACKENDS = Pair{String,Any}["ForwardDiff" => AutoForwardDiff()]
@@ -139,32 +139,49 @@ if !isnothing(Base.find_package("Enzyme"))
 end
 
 # ===========================================================================
-# NUTS timing: default adaptation schedule (`n_adapts = min(N÷10, 1000)`,
-# same as AbstractMCMC's own default — PracticalBayes and Turing both go
-# through this identical schedule, so the ratio is fair regardless of how
-# much of the run is adaptation vs steady-state).
+# NUTS timing: adaptation schedule EXPLICITLY MATCHED to Turing's own
+# convention, not AdvancedHMC's bare default. `Turing.sample(model,
+# NUTS(0.8), N)` (nadapts unspecified) resolves internally to
+# `n_adapts = min(1000, N÷2)` and discards all `n_adapts` warmup draws
+# (`packages/Turing/*/src/mcmc/hmc.jl`, the `nadapts == -1` branch) — i.e.
+# it actually runs `n_adapts + N` total transitions and reports N. AdvancedHMC's
+# OWN default (`n_adapts = min(N÷10, 1000)`, N total transitions INCLUDING
+# adaptation) is a materially different, much shorter adaptation budget —
+# confirmed via direct investigation to be the dominant cause of PB
+# appearing far slower than Turing on hierarchical models: with only 1/10th
+# of Turing's adaptation budget, PB's step size/mass matrix are undertuned,
+# NUTS trees run deeper, and each kept sample costs many more gradient
+# evaluations, even though the RAW gradient-eval speed is at parity or
+# faster. Fixed by passing `n_adapts=N÷2` and `discard_initial=n_adapts`
+# explicitly here, mirroring Turing's resolved values exactly so both sides
+# run the same total number of transitions (n_adapts adaptation + nuts_samples
+# kept) and report timing over the same definition of "kept sample".
 #
 # ONE short chain first (untimed) purely to force JIT compilation of the
 # whole call path, THEN one timed chain at the real sample count. Multiple
 # full-length timed reps (the earlier design) made a 55-model sweep
-# impractically slow — 1000-sample NUTS chains are themselves long enough
+# impractically slow — 500-sample NUTS chains are themselves long enough
 # that a single post-warmup timing is already fairly stable, so the
 # statistical value of repeating the whole chain 3-5× isn't worth 3-5× the
 # wall-clock cost here (contrast with the logdensity/gradient layers, which
 # are cheap enough that many `reps` cost almost nothing and materially
 # reduce noise).
+#
+# Swept across every available AD backend (ForwardDiff/Mooncake/Enzyme),
+# matching the gradient layer — previously NUTS only ever used ForwardDiff.
 # ===========================================================================
 
-function bench_nuts(m, layout, θ0, store0, T; nuts_samples=500, compile_samples=20)
+function bench_nuts(m, layout, θ0, store0, T, adtype; nuts_samples=500, compile_samples=20)
     δ = T(0.8)
-    ldf = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0)
+    n_adapts = nuts_samples ÷ 2
+    ldf = LogDensityFunction(m, layout, store0, adtype; θ0=θ0)
     ldm = AbstractMCMC.LogDensityModel(ldf)
     # Compile warmup: short chain, discarded, not timed as `first_call_s` either
     # (a genuinely separate call shape/sample count from the timed run below,
     # so it wouldn't be a meaningful "first call" number anyway).
-    AbstractMCMC.sample(Random.Xoshiro(1), ldm, AdvancedHMC.NUTS(δ), compile_samples; initial_params=θ0, progress=false)
-    first_call_s = @elapsed AbstractMCMC.sample(Random.Xoshiro(1), ldm, AdvancedHMC.NUTS(δ), nuts_samples; initial_params=θ0, progress=false)
-    t = @elapsed AbstractMCMC.sample(Random.Xoshiro(2), ldm, AdvancedHMC.NUTS(δ), nuts_samples; initial_params=θ0, progress=false)
+    AbstractMCMC.sample(Random.Xoshiro(1), ldm, AdvancedHMC.NUTS(δ), compile_samples; n_adapts=compile_samples ÷ 2, discard_initial=compile_samples ÷ 2, initial_params=θ0, progress=false)
+    first_call_s = @elapsed AbstractMCMC.sample(Random.Xoshiro(1), ldm, AdvancedHMC.NUTS(δ), nuts_samples; n_adapts=n_adapts, discard_initial=n_adapts, initial_params=θ0, progress=false)
+    t = @elapsed AbstractMCMC.sample(Random.Xoshiro(2), ldm, AdvancedHMC.NUTS(δ), nuts_samples; n_adapts=n_adapts, discard_initial=n_adapts, initial_params=θ0, progress=false)
     return TimingResult("NUTS ($T)", first_call_s, t, t, t, 0.0, 1)
 end
 
@@ -200,11 +217,13 @@ function _bench_one_model_at_latest_world(corpus, name, buildfn, init, T; reps, 
         end
     end
 
-    try
-        r = bench_nuts(m, layout, θ0, store0, T; nuts_samples=nuts_samples)
-        record!(; corpus, model=name, layer="nuts", precision=string(T), backend="ForwardDiff", r)
-    catch e
-        println(rpad("$corpus/$name", 40), "  [$T] NUTS FAILED — ", _trunc_err(e))
+    for (bname, adtype) in _AD_BACKENDS
+        try
+            r = bench_nuts(m, layout, θ0, store0, T, adtype; nuts_samples=nuts_samples)
+            record!(; corpus, model=name, layer="nuts", precision=string(T), backend=bname, r)
+        catch e
+            println(rpad("$corpus/$name", 40), "  [$T/$bname] NUTS FAILED — ", _trunc_err(e))
+        end
     end
     return nothing
 end
