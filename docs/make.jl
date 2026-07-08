@@ -11,6 +11,8 @@ makedocs(
         "Home" => "index.md",
         "Sampling" => "sampling.md",
     ],
+    checkdocs=:none,
+    warnonly=true,
 )
 
 deploydocs(

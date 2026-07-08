@@ -1,5 +1,9 @@
 # PracticalBayes
 
+[![CI](https://github.com/EvoArt/PracticalBayes/actions/workflows/ci.yml/badge.svg)](https://github.com/EvoArt/PracticalBayes/actions/workflows/ci.yml)
+[![Benchmark Sweep](https://github.com/EvoArt/PracticalBayes/actions/workflows/benchmark.yml/badge.svg)](https://github.com/EvoArt/PracticalBayes/actions/workflows/benchmark.yml)
+[![Docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://EvoArt.github.io/PracticalBayes)
+
 PracticalBayes is a performance-oriented probabilistic programming package built to keep clean Turing-style modeling syntax while targeting fast inference paths from day one.
 
 ## Why this package exists
