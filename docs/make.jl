@@ -1,0 +1,19 @@
+using Documenter
+using PracticalBayes
+
+DocMeta.setdocmeta!(PracticalBayes, :DocTestSetup, :(using PracticalBayes); recursive=true)
+
+makedocs(
+    modules=[PracticalBayes],
+    sitename="PracticalBayes.jl",
+    format=Documenter.HTML(prettyurls=get(ENV, "CI", "false") == "true"),
+    pages=[
+        "Home" => "index.md",
+        "Sampling" => "sampling.md",
+    ],
+)
+
+deploydocs(
+    repo="github.com/EvoArt/PracticalBayes.git",
+    devbranch="master",
+)
