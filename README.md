@@ -27,7 +27,7 @@ PracticalBayes will likely never be as general as Turing, by design. It intentio
 ```julia
 using PracticalBayes
 using ADTypes
-using LogDensityProblems
+using Random
 
 @model function demo_model(y)
     μ ~ Normal(0, 1)
@@ -36,9 +36,7 @@ using LogDensityProblems
 end
 
 m = demo_model(randn(100))
-layout, θ0, store0 = build_layout(m)
-ldf = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0)
-logp, grad = LogDensityProblems.logdensity_and_gradient(ldf, θ0)
+chain = sample(Random.default_rng(), m, NUTS(0.8), 1000; adtype=AutoForwardDiff())
 ```
 
 ## Features
