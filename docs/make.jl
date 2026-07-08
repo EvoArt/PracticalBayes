@@ -18,4 +18,6 @@ makedocs(
 deploydocs(
     repo="github.com/EvoArt/PracticalBayes.git",
     devbranch="master",
+    devurl="",
+    versions=["v#.#", "v#.#.#", "stable"],
 )
