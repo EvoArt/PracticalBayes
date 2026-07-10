@@ -15,6 +15,7 @@ import StatsFuns
 import LinearAlgebra
 import CairoMakie
 import Enzyme
+import Mooncake
 import JSON3
 
 const ENZYME_MODE = Enzyme.set_runtime_activity(Enzyme.Reverse)
