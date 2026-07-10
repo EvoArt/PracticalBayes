@@ -101,17 +101,31 @@ Untracked/private (still worth reading, just don't assume they're pushed):
   not a real API conflict. `Bijectors = "0.15.24"` (pinned, no 0.16) + `AbstractPPL =
   "0.14, 0.15"` lets Turing 0.45 install directly into the main environment as a
   test-only dependency.
+- **`src/sample.jl` exists and is tested** (`AbstractMCMC.sample` overload for `Model`
+  + `AdvancedHMC.AbstractHMCSampler`, returns a `FlexiChains.SymChain` by default;
+  `chain_type=nothing` gives raw `AdvancedHMC.Transition`s). Verified against the
+  analytic conjugate-Normal reference (`test/sample.jl`, within 3 MC-SE, matching
+  `test/turing_comparison.jl`'s own reference). Chain output uses **FlexiChains**, not
+  MCMCChains (the plan's original choice) — `MCMCChains` was a declared-but-unused dep
+  and was removed. Key non-obvious implementation detail:
+  `FlexiChains.to_nt_and_stats(nt::NamedTuple)` puts the WHOLE NamedTuple into the
+  params half and returns empty stats — merging invlink'd params and AdvancedHMC's
+  stat NamedTuple into one flat NamedTuple before bundling loses the params/stats
+  split entirely (confirmed: every AdvancedHMC diagnostic showed up as a `Parameter`,
+  not an `Extra`, on the first attempt). Fixed with a small `PBTransitionNT(params,
+  stats)` wrapper + a `FlexiChains.to_nt_and_stats` method on it — see `sample.jl`'s
+  own docstring for the wider explanation.
+- **`AbstractMCMC.sample(rng, model, spl, MCMCThreads(), N, nchains; ...)` already
+  works, with ZERO extra PracticalBayes code.** `AbstractMCMC.mcmcsample`'s own
+  generic `MCMCThreads` implementation calls the single-chain `sample()` method above
+  once per thread and combines the resulting `SymChain`s via `chainsstack`/`chainscat`
+  (`cat(...; dims=3)`) — `FlexiChain` (DimensionalData-backed) supports this `cat`
+  generically. Verified: 4 threaded NUTS chains on a conjugate model combine into one
+  correctly-shaped chain with `FlexiChains.rhat` < 1.01 on both parameters (the M2
+  milestone's own multi-chain gate) — see `test/sample.jl`.
 
 ## Known gaps / in-progress areas (as of this writing)
 
-- `src/sample.jl` (an `AbstractMCMC.sample` overload for `Model` + `AdvancedHMC`
-  samplers, returning a `FlexiChains.SymChain` by default) exists on disk but is
-  **not yet committed to git and has no test file** (`test/sample.jl` doesn't exist;
-  `test/runtests.jl` doesn't include it). It has been smoke-tested manually (one
-  small conjugate-Normal model, produces a plausible-looking `SymChain` with
-  `Parameter(:mu)`/`Parameter(:sigma)`/AdvancedHMC stats as `Extra`s) but not run
-  through `Pkg.test()` or checked against an analytic reference the way other M2/M3
-  gates in this package are. Treat as unverified until that happens.
 - `bench/suite.jl`'s `manyparam_model`/`poisson_model` use the IID-per-element-loop
   prior pattern described above — confirmed present, not yet fixed. Their Turing-side
   counterparts in `test/comparison_env/generate_turing_reference.jl` have a

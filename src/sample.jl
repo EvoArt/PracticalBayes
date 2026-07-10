@@ -31,6 +31,21 @@ rather than a bare `NamedTuple`.
 `chain_type=nothing` returns AdvancedHMC's raw `Vector{AdvancedHMC.Transition}`
 instead (skips `invlink`/FlexiChains entirely) for callers who want the
 unconstrained θ vectors directly (e.g. diagnostics, `predict`).
+
+## Multi-chain: `AbstractMCMC.MCMCThreads`/`MCMCDistributed` work with NO
+## PracticalBayes-side code beyond this single-chain method
+
+`AbstractMCMC.sample(rng, model, spl, MCMCThreads(), N, nchains; kwargs...)`
+just works — confirmed directly, no extra method needed. `AbstractMCMC`'s own
+`mcmcsample` implementation for `MCMCThreads` calls this exact single-chain
+method once per thread (via `StatsBase.sample`, `deepcopy`d model/sampler per
+thread) and combines the resulting `SymChain`s with `chainsstack`/`chainscat`
+(`reduce(chainscat, chains)`, i.e. `cat(chains...; dims=3)`) — `FlexiChain`
+(backed by `DimensionalData`) supports this `cat` generically, with no
+FlexiChains-side or PracticalBayes-side multi-chain glue required. Verified:
+4 threaded NUTS chains on a conjugate model combine into one correctly-shaped
+`(niters, nchains)` `SymChain`, and `FlexiChains.rhat` on the result reports
+< 1.01 for both parameters (the M2 milestone's own multi-chain gate).
 """
 function AbstractMCMC.sample(
     rng::Random.AbstractRNG,
