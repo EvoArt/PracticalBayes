@@ -1,0 +1,2881 @@
+{
+    "meta": {
+        "n_values": [
+            50,
+            200,
+            1000,
+            5000,
+            20000
+        ],
+        "precisions": [
+            "Float64",
+            "Float32"
+        ],
+        "bench_evals": 1,
+        "likelihoods": [
+            "normal",
+            "poisson",
+            "bernoulli_logit"
+        ],
+        "bench_samples": 20,
+        "nparams_values": [
+            2,
+            10,
+            50,
+            100,
+            200
+        ]
+    },
+    "rows": [
+        {
+            "forwarddiff": {
+                "turing_ns": 671,
+                "pb_ns": 631
+            },
+            "N": 50,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.940387481371088,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 1016.5,
+                "pb_ns": 951.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6920.5,
+                "pb_ns": 7145.5
+            },
+            "N": 50,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0307125307125307,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 1628,
+                "pb_ns": 1678
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 126850.5,
+                "pb_ns": 132960
+            },
+            "N": 50,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0174825174825175,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 2574,
+                "pb_ns": 2619
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 459801,
+                "pb_ns": 483116
+            },
+            "N": 50,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0400883838383839,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 4752,
+                "pb_ns": 4942.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1694828,
+                "pb_ns": 1762004
+            },
+            "N": 50,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0022200717253942,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 8783.5,
+                "pb_ns": 8803
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2003,
+                "pb_ns": 2183.5
+            },
+            "N": 200,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0901148277583625,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 15288,
+                "pb_ns": 15548
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 24492,
+                "pb_ns": 24762.5
+            },
+            "N": 200,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0233809228222637,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 16915.5,
+                "pb_ns": 17311
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 474383,
+                "pb_ns": 483887
+            },
+            "N": 200,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0006090851933354,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 25448,
+                "pb_ns": 25463.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1793096,
+                "pb_ns": 1814132
+            },
+            "N": 200,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0258218396764491,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 33750.5,
+                "pb_ns": 34622
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6670253,
+                "pb_ns": 6731490
+            },
+            "N": 200,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.007576689147646,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 52859.5,
+                "pb_ns": 53260
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6795.5,
+                "pb_ns": 6970
+            },
+            "N": 1000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0256787580016187,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 11772.5,
+                "pb_ns": 12198.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 105789,
+                "pb_ns": 106475
+            },
+            "N": 1000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0221811909331648,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 20580.5,
+                "pb_ns": 21037
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2315641,
+                "pb_ns": 2.3201935e6
+            },
+            "N": 1000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0001749444551356,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 57161,
+                "pb_ns": 57171
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 8937090,
+                "pb_ns": 8.9655425e6
+            },
+            "N": 1000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0015271401877783,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 108372.5,
+                "pb_ns": 108538
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 3.34763345e7,
+                "pb_ns": 33507402
+            },
+            "N": 1000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.029571522162141,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 204538,
+                "pb_ns": 210586.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 27486,
+                "pb_ns": 28242.5
+            },
+            "N": 5000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0275231026704503,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 35187.5,
+                "pb_ns": 34982
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 533226.5,
+                "pb_ns": 539867
+            },
+            "N": 5000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0029736324063547,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 72134,
+                "pb_ns": 72348.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 13138123,
+                "pb_ns": 1.32272165e7
+            },
+            "N": 5000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9920514590137506,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 276025.5,
+                "pb_ns": 273831.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 4.82791615e7,
+                "pb_ns": 47831923
+            },
+            "N": 5000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0044700762911616,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 573592,
+                "pb_ns": 576156
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.747151115e8,
+                "pb_ns": 1.741543225e8
+            },
+            "N": 5000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.100189233926487,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 1.0883355e6,
+                "pb_ns": 1197375
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 383922,
+                "pb_ns": 102949.5
+            },
+            "N": 20000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.7463488898957862,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 137937.5,
+                "pb_ns": 371999.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 3.4833665e6,
+                "pb_ns": 3.4902415e6
+            },
+            "N": 20000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9945421396812276,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 300026,
+                "pb_ns": 298388.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 5.60337115e7,
+                "pb_ns": 55706445
+            },
+            "N": 20000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9961081564526056,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 1212022,
+                "pb_ns": 1207305
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 196282517,
+                "pb_ns": 1.961667435e8
+            },
+            "N": 20000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9885021602510896,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 2.4114095e6,
+                "pb_ns": 2.3836835e6
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 737402080,
+                "pb_ns": 736194619
+            },
+            "N": 20000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0383561793906928,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": 7485026,
+                "pb_ns": 7772123
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2654,
+                "pb_ns": 1467
+            },
+            "N": 50,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.552750565184627,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 19234
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 8923.5,
+                "pb_ns": 7115.5
+            },
+            "N": 50,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.797388916904802,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 22078
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 128508,
+                "pb_ns": 124798
+            },
+            "N": 50,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.1843542814455131,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 23691
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 479736.5,
+                "pb_ns": 496311
+            },
+            "N": 50,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.05254551196333821,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 25208
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.7408165e6,
+                "pb_ns": 1806941
+            },
+            "N": 50,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.015860948009166962,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 27611
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 10420.5,
+                "pb_ns": 6344.5
+            },
+            "N": 200,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.608847943956624,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 73075
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 32343.5,
+                "pb_ns": 25673.5
+            },
+            "N": 200,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.7937761837772659,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 74883
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 499866,
+                "pb_ns": 467853
+            },
+            "N": 200,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.16509224472158537,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 82524
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.8933415e6,
+                "pb_ns": 1858835
+            },
+            "N": 200,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.0492359672040147,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 93220.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6.8867775e6,
+                "pb_ns": 6856758
+            },
+            "N": 200,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.016398743824669812,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 112934.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 49119,
+                "pb_ns": 25358.5
+            },
+            "N": 1000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.5162666178057371,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 374873.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 160010.5,
+                "pb_ns": 121783
+            },
+            "N": 1000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.7610938032191638,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 382069.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2460724,
+                "pb_ns": 2263617
+            },
+            "N": 1000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.17376694826400685,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 427592.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 9414377,
+                "pb_ns": 9.3824935e6
+            },
+            "N": 1000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.050344011080074656,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 473957.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 34317726,
+                "pb_ns": 3.39061485e7
+            },
+            "N": 1000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.016822151910648158,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 577298
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 242895.5,
+                "pb_ns": 121623.5
+            },
+            "N": 5000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.5007235621903247,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.9295205e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 725151,
+                "pb_ns": 577173
+            },
+            "N": 5000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.7959349156244699,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.9469535e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.32792985e7,
+                "pb_ns": 1.11939455e7
+            },
+            "N": 5000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.16435250702437332,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 2182486
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 5.04646305e7,
+                "pb_ns": 48839111
+            },
+            "N": 5000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.05238628468705423,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 2.6436545e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 178954992,
+                "pb_ns": 1.761696555e8
+            },
+            "N": 5000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.020953472479828896,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 3.7497285e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1112222,
+                "pb_ns": 537418
+            },
+            "N": 20000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.4831931035350856,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7693829
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 3.2074985e6,
+                "pb_ns": 3338280
+            },
+            "N": 20000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.040773674562903,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7947476
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 56839689,
+                "pb_ns": 53103941
+            },
+            "N": 20000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.17621169602106726,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 10015818
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 205898672,
+                "pb_ns": 198141445
+            },
+            "N": 20000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.055603877328553146,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.14487645e7
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 749737945,
+                "pb_ns": 744736286
+            },
+            "N": 20000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.01889671797257107,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.41675865e7
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1733,
+                "pb_ns": 1697.5
+            },
+            "N": 50,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9795152914021927,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 11908
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 7076,
+                "pb_ns": 7030.5
+            },
+            "N": 50,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9935698134539288,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 14486.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 124682,
+                "pb_ns": 126264.5
+            },
+            "N": 50,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.13028745127604627,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 16244.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 467237,
+                "pb_ns": 495350
+            },
+            "N": 50,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.03879615698243076,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 18127
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1712851,
+                "pb_ns": 1797814
+            },
+            "N": 50,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.011738032088021667,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 20105.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6670,
+                "pb_ns": 6610
+            },
+            "N": 200,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9910044977511244,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 46104
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 25123,
+                "pb_ns": 25513.5
+            },
+            "N": 200,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0155435258528043,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 47917.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 486026,
+                "pb_ns": 466957
+            },
+            "N": 200,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.11360091846938229,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 55213
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1833216,
+                "pb_ns": 1.8530505e6
+            },
+            "N": 200,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.03541181181050133,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 64917.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6.7560595e6,
+                "pb_ns": 6817301
+            },
+            "N": 200,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.012715844198826255,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 85909
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 29074,
+                "pb_ns": 29705
+            },
+            "N": 1000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0217032400082549,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 228678.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 125904.5,
+                "pb_ns": 121257
+            },
+            "N": 1000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9630871017318682,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 235729
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2389281,
+                "pb_ns": 2.2574235e6
+            },
+            "N": 1000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.11669786852195284,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 278824
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 9094060,
+                "pb_ns": 9.1199435e6
+            },
+            "N": 1000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.03670324365574892,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 333781.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 3.37089005e7,
+                "pb_ns": 3.38401785e7
+            },
+            "N": 1000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.012797020774973068,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 431373.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 138396.5,
+                "pb_ns": 139770
+            },
+            "N": 5000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.009924383925894,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.8472015e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 592566,
+                "pb_ns": 583993
+            },
+            "N": 5000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9855324132670453,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1885955
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.28467765e7,
+                "pb_ns": 12539510
+            },
+            "N": 5000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.16379069877957322,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 2.1041825e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 4.87706995e7,
+                "pb_ns": 4.88170225e7
+            },
+            "N": 5000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.0500165780890635,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 2.4393435e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.760462745e8,
+                "pb_ns": 1.760904855e8
+            },
+            "N": 5000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.01802174177789829,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 3.1726605e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 697785.5,
+                "pb_ns": 711070.5
+            },
+            "N": 20000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0190388020387353,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7466408
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2.6310855e6,
+                "pb_ns": 3467940
+            },
+            "N": 20000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.3180643502463147,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7.8698395e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 54431692,
+                "pb_ns": 5.40061565e7
+            },
+            "N": 20000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.17679252006349536,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 9623116
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 196537740,
+                "pb_ns": 207865107
+            },
+            "N": 20000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.05677090059140804,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.11576245e7
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 738666179,
+                "pb_ns": 736925736
+            },
+            "N": 20000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.018323861826628995,
+            "precision": "Float64",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 13535217
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 385.5,
+                "pb_ns": 426
+            },
+            "N": 50,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.105058365758755,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 1036.5,
+                "pb_ns": 771.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6425,
+                "pb_ns": 6404.5
+            },
+            "N": 50,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.29957865168539327,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 3560,
+                "pb_ns": 1066.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 124757.5,
+                "pb_ns": 132865
+            },
+            "N": 50,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.41579679888656923,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 4311,
+                "pb_ns": 1792.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 467884,
+                "pb_ns": 483407
+            },
+            "N": 50,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.6251572327044025,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 6360,
+                "pb_ns": 3976
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.7145255e6,
+                "pb_ns": 1781299
+            },
+            "N": 50,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.7078971255673222,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 8262.5,
+                "pb_ns": 5849
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2083,
+                "pb_ns": 2038
+            },
+            "N": 200,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.6514642342774843,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 17496,
+                "pb_ns": 1357
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 22939.5,
+                "pb_ns": 23861
+            },
+            "N": 200,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.09294948052978032,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 18913.5,
+                "pb_ns": 1758
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 483986.5,
+                "pb_ns": 490768.5
+            },
+            "N": 200,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.18965191963022357,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 21202,
+                "pb_ns": 4021
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1831511,
+                "pb_ns": 1.8508655e6
+            },
+            "N": 200,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.2867375732580855,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 23035,
+                "pb_ns": 6605
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6.8156765e6,
+                "pb_ns": 6874435
+            },
+            "N": 200,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.3750930752047654,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 26860,
+                "pb_ns": 10075
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 4677,
+                "pb_ns": 4606.5
+            },
+            "N": 1000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9849262347658756,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 10696,
+                "pb_ns": 6254
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 110671,
+                "pb_ns": 111728
+            },
+            "N": 1000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.6280519480519481,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 13475,
+                "pb_ns": 8463
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2.3784725e6,
+                "pb_ns": 2381262
+            },
+            "N": 1000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.7104670517967296,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 20426,
+                "pb_ns": 14512
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 9.0428825e6,
+                "pb_ns": 9.0593825e6
+            },
+            "N": 1000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.8085943461818922,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 29484.5,
+                "pb_ns": 23841
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 3.38004705e7,
+                "pb_ns": 33831492
+            },
+            "N": 1000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.872206597750076,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 52624,
+                "pb_ns": 45899
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 18417.5,
+                "pb_ns": 18738
+            },
+            "N": 5000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.017401927514592,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 25829,
+                "pb_ns": 20335.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 548169.5,
+                "pb_ns": 549581
+            },
+            "N": 5000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.8404544449009259,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 31643,
+                "pb_ns": 26594.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 11772335,
+                "pb_ns": 1.18099725e7
+            },
+            "N": 5000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.8963855746909248,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 74092,
+                "pb_ns": 66415
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 4.50607935e7,
+                "pb_ns": 4.51273675e7
+            },
+            "N": 5000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9695115383116868,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 218164.5,
+                "pb_ns": 211513
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.711258335e8,
+                "pb_ns": 1.688092485e8
+            },
+            "N": 5000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9717693376200551,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 319280.5,
+                "pb_ns": 310267
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 63635.5,
+                "pb_ns": 64071
+            },
+            "N": 20000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.915251706987452,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 86234.5,
+                "pb_ns": 58242.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2.0740705e6,
+                "pb_ns": 2065894
+            },
+            "N": 20000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.7757287794030784,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 115124,
+                "pb_ns": 89305
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 50935752,
+                "pb_ns": 51235078
+            },
+            "N": 20000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9094811984443846,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 367443,
+                "pb_ns": 334182.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.939918565e8,
+                "pb_ns": 193346051
+            },
+            "N": 20000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9730085227272727,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 528000,
+                "pb_ns": 513748.5
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 7.118456535e8,
+                "pb_ns": 7.117623985e8
+            },
+            "N": 20000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.003997852384601,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": 1417386,
+                "pb_ns": 1.4230525e6
+            },
+            "likelihood": "normal"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2508.5,
+                "pb_ns": 1217
+            },
+            "N": 50,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.4851504883396452,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 18878.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 7867,
+                "pb_ns": 6365
+            },
+            "N": 50,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.809075886614974,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 19129
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 122013.5,
+                "pb_ns": 122574
+            },
+            "N": 50,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.16092071778942493,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 19634.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 482195,
+                "pb_ns": 489461
+            },
+            "N": 50,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.04559980920581922,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 21988
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.7451835e6,
+                "pb_ns": 1791403
+            },
+            "N": 50,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.013778493780166956,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 24046
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 9895,
+                "pb_ns": 5954
+            },
+            "N": 200,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.6017180394138454,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 70881
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 28272.5,
+                "pb_ns": 23785.5
+            },
+            "N": 200,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.8412945441683615,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 70616.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 478099,
+                "pb_ns": 461984.5
+            },
+            "N": 200,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.15195492983670747,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 72649.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.8950495e6,
+                "pb_ns": 1866817
+            },
+            "N": 200,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.039583398744993205,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 75012.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6.9417225e6,
+                "pb_ns": 6914412
+            },
+            "N": 200,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.01139688312230862,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 79114
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 46379.5,
+                "pb_ns": 23200
+            },
+            "N": 1000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.5002210028137432,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 384002.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 135103,
+                "pb_ns": 110781.5
+            },
+            "N": 1000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.8199780907899898,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 380547
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2333098,
+                "pb_ns": 2.2162725e6
+            },
+            "N": 1000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.16621162077203785,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 387788
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 9.3861935e6,
+                "pb_ns": 9147184
+            },
+            "N": 1000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.04289124233375329,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 402585.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 3.44495885e7,
+                "pb_ns": 34005235
+            },
+            "N": 1000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.012285241084955194,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 423221.5
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 226986.5,
+                "pb_ns": 111602.5
+            },
+            "N": 5000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.4916702094617962,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1846326
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 681945.5,
+                "pb_ns": 556326.5
+            },
+            "N": 5000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.8157931975502442,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1848504
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 11613244,
+                "pb_ns": 11005107
+            },
+            "N": 5000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.1613435487965292,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1873722
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 4.67669795e7,
+                "pb_ns": 45588331
+            },
+            "N": 5000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.042745234380595395,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.9990655e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 174819011,
+                "pb_ns": 171171355
+            },
+            "N": 5000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.012124033238009795,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 2.1195115e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.0538345e6,
+                "pb_ns": 538174.5
+            },
+            "N": 20000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.5106821801715544,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7.2264045e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2967642,
+                "pb_ns": 2305086
+            },
+            "N": 20000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.776739916741979,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7.4262305e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 52041566,
+                "pb_ns": 48644080
+            },
+            "N": 20000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.1478877768589823,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7.6963115e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2.033208725e8,
+                "pb_ns": 196437888
+            },
+            "N": 20000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.038531339176699625,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7.8342255e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 729334414,
+                "pb_ns": 714743817
+            },
+            "N": 20000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.01198673795200894,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 8.7423405e6
+            },
+            "likelihood": "poisson"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1472.5,
+                "pb_ns": 1362
+            },
+            "N": 50,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9249575551782683,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 2103.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6384.5,
+                "pb_ns": 6450
+            },
+            "N": 50,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.36784399718067196,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 2348.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 114477,
+                "pb_ns": 119915.5
+            },
+            "N": 50,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.023969880412659312,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 2744
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 466466,
+                "pb_ns": 484813.5
+            },
+            "N": 50,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.01029442660343948,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 4802
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1714373,
+                "pb_ns": 1.7656795e6
+            },
+            "N": 50,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.003534236715113922,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 6059
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 5758.5,
+                "pb_ns": 6089.5
+            },
+            "N": 200,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0574802465919944,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7065
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 23014,
+                "pb_ns": 23335.5
+            },
+            "N": 200,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.3205005648735552,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7376
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 448034.5,
+                "pb_ns": 452310
+            },
+            "N": 200,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.019838874015282306,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 8888.5
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.8398355e6,
+                "pb_ns": 1849512
+            },
+            "N": 200,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.005944553195109019,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 10937
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 6829372,
+                "pb_ns": 6871800
+            },
+            "N": 200,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.0019752914323601057,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 13490
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 25458,
+                "pb_ns": 25849
+            },
+            "N": 1000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0153586299002277,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 34126
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 110501,
+                "pb_ns": 111572
+            },
+            "N": 1000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.31454013990823615,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 34757
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2208664,
+                "pb_ns": 2.2094055e6
+            },
+            "N": 1000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.017856496053722973,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 39439
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 9.1186995e6,
+                "pb_ns": 9093456
+            },
+            "N": 1000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.005256999641231734,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 47937
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 3.38598035e7,
+                "pb_ns": 33852563
+            },
+            "N": 1000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.0019394383077267416,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 65669
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 122529,
+                "pb_ns": 127882
+            },
+            "N": 5000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0436876168090818,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.6280465e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 554904,
+                "pb_ns": 557282.5
+            },
+            "N": 5000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.0042863270043108,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.6639715e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.09813705e7,
+                "pb_ns": 1.09877955e7
+            },
+            "N": 5000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.15667452436833817,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1720501
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 4.54041495e7,
+                "pb_ns": 46423106
+            },
+            "N": 5000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.04012152017075003,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.8216835e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 172315256,
+                "pb_ns": 169998913
+            },
+            "N": 5000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.011406619156228396,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 1.9655345e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 667473,
+                "pb_ns": 688806
+            },
+            "N": 20000,
+            "NPARAMS": 2,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 1.031960843359956,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7205294
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 2.4418955e6,
+                "pb_ns": 2.4202275e6
+            },
+            "N": 20000,
+            "NPARAMS": 10,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.9911265654078972,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7.2993515e6
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 48768813,
+                "pb_ns": 48882429
+            },
+            "N": 20000,
+            "NPARAMS": 50,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.1554622213175457,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 7581708
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 1.971819645e8,
+                "pb_ns": 197137861
+            },
+            "N": 20000,
+            "NPARAMS": 100,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.0408702693496088,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 8058880
+            },
+            "likelihood": "bernoulli_logit"
+        },
+        {
+            "forwarddiff": {
+                "turing_ns": 719550284,
+                "pb_ns": 713363991
+            },
+            "N": 20000,
+            "NPARAMS": 200,
+            "mooncake": {
+                "turing_ns": null,
+                "pb_ns": null
+            },
+            "fastest_per_ppl_ratio": 0.012284997583296068,
+            "precision": "Float32",
+            "enzyme": {
+                "turing_ns": null,
+                "pb_ns": 8.8396735e6
+            },
+            "likelihood": "bernoulli_logit"
+        }
+    ]
+}
