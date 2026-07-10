@@ -59,30 +59,30 @@ Ratios are median gradient time `PracticalBayes / Turing` (`< 1` means Practical
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 1.053 | 1.068 | 0.968 | 1.041 |
-| `normal` | `Float32` | 0.999 | 0.99 | 0.999 | 1.005 |
-| `poisson` | `Float64` | 0.472 | 0.994 | 0.717 | 0.889 |
-| `poisson` | `Float32` | 0.479 | 0.927 | 0.499 | 0.896 |
-| `bernoulli_logit` | `Float64` | 0.925 | 1.083 | 1.027 | 0.969 |
-| `bernoulli_logit` | `Float32` | 0.945 | 1.014 | 0.988 | 0.999 |
+| `normal` | `Float64` | 0.975 | 1.095 | 1.111 | 0.99 |
+| `normal` | `Float32` | 0.88 | 0.945 | 0.958 | 0.977 |
+| `poisson` | `Float64` | 0.576 | 1.002 | 0.829 | 0.975 |
+| `poisson` | `Float32` | 0.586 | 1.029 | 0.573 | 0.933 |
+| `bernoulli_logit` | `Float64` | 1.145 | 1.04 | 1.001 | 0.968 |
+| `bernoulli_logit` | `Float32` | 0.847 | 0.997 | 1.003 | 0.984 |
 
 ### Mooncake
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 0.992 | 0.952 | 1.01 | 1.012 |
-| `normal` | `Float32` | 0.971 | 0.984 | 0.987 | 1.124 |
-| `poisson` | `Float64` | 0.787 | 0.941 | 0.739 | 0.88 |
-| `poisson` | `Float32` | 0.779 | 0.9 | 0.72 | 0.87 |
-| `bernoulli_logit` | `Float64` | 0.955 | 0.976 | 0.987 | 0.992 |
-| `bernoulli_logit` | `Float32` | 0.957 | 0.971 | 0.992 | 0.999 |
+| `normal` | `Float64` | 1.019 | 0.895 | 0.929 | 0.99 |
+| `normal` | `Float32` | 0.991 | 1.302 | 1.007 | 1.045 |
+| `poisson` | `Float64` | 0.884 | 1.136 | 0.741 | 0.932 |
+| `poisson` | `Float32` | 0.94 | 1.319 | 0.764 | 0.888 |
+| `bernoulli_logit` | `Float64` | 0.905 | 0.853 | 0.966 | 1.005 |
+| `bernoulli_logit` | `Float32` | 0.969 | 0.834 | 1.218 | 1.009 |
 
 ### Enzyme
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 0.83 | 1.03 | 0.99 | 1.025 |
-| `normal` | `Float32` | 0.673 | 0.819 | 0.657 | 0.99 |
+| `normal` | `Float64` | 0.875 | 1.066 | 1.01 | 0.956 |
+| `normal` | `Float32` | 0.535 | 0.577 | 0.621 | 0.944 |
 | `poisson` | `Float64` | n/a | n/a | n/a | n/a |
 | `poisson` | `Float32` | n/a | n/a | n/a | n/a |
 | `bernoulli_logit` | `Float64` | n/a | n/a | n/a | n/a |
