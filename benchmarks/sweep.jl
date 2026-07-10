@@ -1,7 +1,7 @@
 import Pkg
 Pkg.activate(@__DIR__)
-Pkg.instantiate()
 Pkg.develop(Pkg.PackageSpec(path=normpath(joinpath(@__DIR__, ".."))))
+Pkg.instantiate()
 
 import PracticalBayes
 import Turing
@@ -203,8 +203,8 @@ function heatmap_figure(mats, Ns, Ks, likelihoods, precisions; title::String)
             title="$(lik) | $(T)",
             xlabel="N",
             ylabel="NPARAMS",
-            xticks=(1:length(Ns), string.(Ns)),
-            yticks=(1:length(Ks), string.(Ks)),
+            xticks=(1:length(Ns), collect(string.(Ns))),
+            yticks=(1:length(Ks), collect(string.(Ks))),
             xgridvisible=false,
             ygridvisible=false,
         )

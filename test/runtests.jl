@@ -12,4 +12,5 @@ using PracticalBayes
     include("sample.jl")
     include("predict.jl")
     include("turing_comparison.jl")
+    include("gpu/cuda.jl")
 end

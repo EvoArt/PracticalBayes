@@ -140,6 +140,23 @@ Untracked/private (still worth reading, just don't assume they're pushed):
   (`Normal.(mu,sigma)` with scalar `mu`/`sigma`) carries no shape information on its
   own, so the shape has to come from `y`. This matches DynamicPPL's own `predict`
   convention exactly (its docs use the identical `fill(missing, n)` pattern).
+- **M5 (GPU + stress) is mostly done, with one real, honest gap**: `test/gpu/cuda.jl`
+  covers the milestone's own gate (`y, X::CuArray` regression, `CUDA.allowscalar(false)`,
+  logdensity + gradient + short NUTS run, 8-thread chain independence). The
+  8-thread-independence half is verified by actual execution (ran with 8 real
+  threads, confirmed no shared-state leakage across chains). **The CUDA half has
+  NEVER been run on real GPU hardware** — this dev machine has `CUDA.functional()
+  == false` (confirmed directly: `CUDA.CuArray(...)` itself throws "CUDA driver
+  not functional" before any PracticalBayes code runs), so that part of the test
+  is code-reviewed-correct (confirmed the hot path never scalar-indexes into `θ`
+  — `_assume`/`_assume_index` in `tilde.jl` use `view(...)`, never `θ[i]` — and
+  the model-author-facing guarantee is "use array-variate observes", which the
+  test model does) but not execution-verified. Same caveat applies to
+  `benchmarks/gpu/gpu_sweep.jl` (a separate, NOT-CI-wired CPU-vs-GPU gradient-time
+  comparison across an N sweep, meant to be run by hand wherever a real GPU is
+  available — GitHub's standard hosted CI runners have none). Both files are
+  gated on `CUDA.functional()` and confirmed to skip/exit cleanly (not crash) in
+  a no-GPU environment — that much IS verified.
 
 ## Known gaps / in-progress areas (as of this writing)
 
