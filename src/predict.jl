@@ -132,3 +132,44 @@ function chain_draws(chn::FlexiChains.SymChain)
     end
     return draws
 end
+
+"""
+    pointwise_loglikelihoods(model::Model, nt::NamedTuple; flatten=false)
+        -> NamedTuple or Vector{Float64}
+
+Per-observation log-likelihood at a fixed point `nt` (e.g. one posterior
+draw) — the building block for LOO-CV/WAIC-style model comparison (e.g. via
+ParetoSmooth.jl or exporting to ArviZ), which need one log-likelihood value
+per observation rather than `loglikelihood_at`'s single summed scalar. Same
+"every observe site must resolve to real data" contract as
+[`logjoint`](@ref)/`loglikelihood_at` — there is no `predict=true` form of
+this, since a per-observation likelihood term is meaningless without a real
+observation to score it against.
+
+By default (`flatten=false`) returns a `NamedTuple` mapping each observe
+site's name to its own `Vector` of per-observation values, preserving site
+identity for models with more than one observe block. Pass `flatten=true` to
+get everything concatenated into a single `Vector{Float64}` (in the order
+sites were visited during evaluation), which is the shape most LOO-CV/WAIC
+tooling expects directly.
+
+This is a genuinely separate, opt-in re-evaluation of the model — it does
+NOT reuse any state from sampling — because computing per-observation values
+requires `logpdf.(dist, y)` at every `.~` site, which is deliberately NOT
+what the hot HMC path computes (see `PointwiseMode`'s own docstring for
+why). Expect to call this once per posterior draw you want pointwise values
+for, not inside any performance-sensitive loop.
+
+```julia
+draws = chain_draws(chn)
+pw = [pointwise_loglikelihoods(model, nt) for nt in draws]  # one NamedTuple per draw
+loo_matrix = reduce(hcat, pointwise_loglikelihoods(model, nt; flatten=true) for nt in draws)  # n_obs × n_draws
+```
+"""
+function pointwise_loglikelihoods(m::Model, nt::NamedTuple; flatten::Bool=false)
+    mode = PointwiseMode(nt, m.conditioned)
+    evaluate(m, mode, Accum(0.0))
+    pw = mode.pointwise[]
+    flatten || return pw
+    return reduce(vcat, values(pw))
+end

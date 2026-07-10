@@ -111,3 +111,59 @@ end
     mcse = std(all_pred_y) / sqrt(length(all_pred_y))
     @test abs(mean(all_pred_y) - post_mean) < 6 * mcse  # predictive spread is wider than the parameter's own MC-SE (includes observation noise), hence the looser 6x bar
 end
+
+@testset "predict.jl: pointwise_loglikelihoods — M6 (LOO-CV/WAIC building block)" begin
+    rng = StableRNG(20)
+    x = randn(rng, 15)
+    y = 2.0 .* x .+ randn(rng, 15) .* 0.3
+
+    @model function reg(x, y)
+        beta ~ Normal(0, 1)
+        sigma ~ Exponential(1)
+        y .~ Normal.(beta .* x, sigma)
+    end
+
+    m = reg(x, y)
+    nt = (beta=1.9, sigma=0.35)
+
+    pw = PracticalBayes.pointwise_loglikelihoods(m, nt)
+    @test pw isa NamedTuple
+    @test Set(keys(pw)) == Set((:y,))
+    @test length(pw.y) == 15
+
+    # Per-observation values must sum to the same total the existing
+    # summed-scalar accessor (loglikelihood_at, already independently
+    # verified against Accum) computes at the same point — this is the
+    # core correctness gate, since pointwise's whole reason to exist is
+    # the intermediate per-observation array loglikelihood_at deliberately
+    # never materializes.
+    @test sum(pw.y) ≈ PracticalBayes.loglikelihood_at(m, nt)
+    # Each entry must independently match logpdf at that observation.
+    @test pw.y ≈ [Distributions.logpdf(Normal(nt.beta * x[i], nt.sigma), y[i]) for i in eachindex(x)]
+
+    flat = PracticalBayes.pointwise_loglikelihoods(m, nt; flatten=true)
+    @test flat isa Vector{Float64}
+    @test flat == pw.y
+
+    # `x[i] ~` (indexed-family) observe sites must also work, not just `.~`.
+    @model function idx_obs(y)
+        n = length(y)
+        mu = Vector{Float64}(undef, n)
+        for i in 1:n
+            mu[i] ~ Normal(0, 1)
+        end
+        y .~ Normal.(mu, 1.0)
+    end
+    m2 = idx_obs(randn(rng, 5))
+    nt2 = (mu=randn(rng, 5),)
+    pw2 = PracticalBayes.pointwise_loglikelihoods(m2, nt2)
+    @test sum(pw2.y) ≈ PracticalBayes.loglikelihood_at(m2, nt2)
+
+    # No data anywhere (all-`missing` observed argument, same convention
+    # `predict`'s machinery uses) must error clearly, not crash inside
+    # `logpdf` — there is no `predict=true` escape hatch for pointwise
+    # evaluation, since a per-observation likelihood term is meaningless
+    # without a real observation to score it against.
+    m3 = reg(x, fill(missing, 15))
+    @test_throws ArgumentError PracticalBayes.pointwise_loglikelihoods(m3, nt)
+end

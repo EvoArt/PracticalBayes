@@ -401,3 +401,69 @@ function tilde_index(f::FixedMode, ::Val{s}, container, idx::Tuple, dist, acc::A
     container[k] = x
     return x, acc_prior(acc, logpdf(dist, x))
 end
+
+# ===========================================================================
+# PointwiseMode — post-hoc re-evaluation for LOO-CV/WAIC-style pointwise
+# log-likelihoods (see modes.jl's PointwiseMode docstring for why this is a
+# separate mode rather than a FixedMode flag). Assume-site handling is
+# identical in spirit to FixedMode's (read from the fixed point, no
+# recording needed — pointwise values are an OBSERVE-side concept). Observe
+# sites additionally push each observation's own `logpdf` into
+# `p.pointwise[]`, keyed by site name, alongside the usual summed `Accum`
+# accumulation (so `logjoint`-style totals computed via this mode still
+# agree with the `FixedMode` path).
+# ===========================================================================
+
+function tilde(p::PointwiseMode, ::Val{s}, dist, value, acc::Accum) where {s}
+    # Observe site — same three-case priority as FixedMode's own method,
+    # minus the `predict` branch: pointwise evaluation always requires real
+    # data (same rationale as `logjoint`'s own `predict=false`-only contract
+    # — a per-observation likelihood term is meaningless without an
+    # observation to score it against).
+    x = if value !== nothing && value !== missing
+        value
+    else
+        cond = _getcond(p.conditioned, Val(s))
+        cond === nothing && throw(ArgumentError("observe site `$s` has no data; cannot evaluate pointwise logdensity"))
+        cond
+    end
+    lp = logpdf(dist, x)
+    p.pointwise[] = merge(p.pointwise[], NamedTuple{(s,)}(([lp],)))
+    return x, acc_lik(acc, lp)
+end
+
+function tilde(p::PointwiseMode, ::Val{s}, dist, ::Nothing, acc::Accum) where {s}
+    # Assume site: read from the fixed point (normal case), or draw fresh —
+    # matches FixedMode's own assume method, since a value has to come from
+    # somewhere even for a parameter the fixed point didn't include.
+    x = hasfield(typeof(p.fixed), s) ? getfield(p.fixed, s) : rand(Random.default_rng(), dist)
+    return x, acc_prior(acc, logpdf(dist, x))
+end
+
+function tilde_index(p::PointwiseMode, ::Val{s}, container, idx::Tuple, dist, acc::Accum) where {s}
+    k = LinearIndices(size(container))[idx...]
+    x = hasfield(typeof(p.fixed), s) ? getfield(p.fixed, s)[k] : rand(Random.default_rng(), dist)
+    container[k] = x
+    return x, acc_prior(acc, logpdf(dist, x))
+end
+
+function tilde_dot(p::PointwiseMode, ::Val{s}, y, dist_bcast, acc::Accum) where {s}
+    y === nothing && error("`.~` assume (unknown LHS) is not supported; use `x[i] ~ dist` or an array distribution")
+    # Same "no data, no predict escape hatch" contract as the scalar `tilde`
+    # method above — an all-`missing` `y` (the shape-carrying placeholder
+    # `predict`'s machinery uses, see `_dot_all_missing`'s own docstring)
+    # means there is genuinely no observation to score a pointwise
+    # log-likelihood against, so this must error, not call `logpdf` on
+    # `missing` (which would otherwise hit a bare `MethodError` instead of a
+    # clear, intentional one).
+    _dot_all_missing(y) && throw(ArgumentError("observe site `$s` has no data; cannot evaluate pointwise logdensity"))
+    # This is the one place pointwise evaluation genuinely differs in cost
+    # from FixedMode: `.~`'s hot-path optimization (`_dot_loglik`, see this
+    # file's top-of-file comment) deliberately avoids materializing
+    # per-observation values via the summed `Distributions.loglikelihood`
+    # fast path — but pointwise values are the entire point here, so this
+    # method always takes the `logpdf.(dist_bcast, y)` form instead.
+    lps = logpdf.(dist_bcast, y)
+    p.pointwise[] = merge(p.pointwise[], NamedTuple{(s,)}((vec(lps),)))
+    return acc_lik(acc, sum(lps))
+end

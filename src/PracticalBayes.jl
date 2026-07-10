@@ -30,13 +30,13 @@ export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction
-export AbstractEvalMode, TraceMode, EvalMode, PriorMode, FixedMode
+export AbstractEvalMode, TraceMode, EvalMode, PriorMode, FixedMode, PointwiseMode
 export evaluate, paramtype
 export maximum_a_posteriori, maximum_likelihood, laplace_approximation
 export PointEstimate, LaplaceApproximation, laplace_mvnormal
 export AbstractLatentKernel, ModelConditional, latent_step
 export Gibbs, GibbsState
 export SymChain
-export returned, predict, chain_draws, loglikelihood_at
+export returned, predict, chain_draws, loglikelihood_at, pointwise_loglikelihoods
 
 end # module PracticalBayes
