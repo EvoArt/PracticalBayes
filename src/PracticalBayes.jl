@@ -23,6 +23,7 @@ include("optimize.jl")
 include("latent.jl")
 include("gibbs.jl")
 include("sample.jl")
+include("predict.jl")
 
 export @model, Model, condition, decondition, @addlogprob!
 export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit
@@ -36,5 +37,6 @@ export PointEstimate, LaplaceApproximation, laplace_mvnormal
 export AbstractLatentKernel, ModelConditional, latent_step
 export Gibbs, GibbsState
 export SymChain
+export returned, predict, chain_draws, loglikelihood_at
 
 end # module PracticalBayes

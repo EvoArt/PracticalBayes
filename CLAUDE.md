@@ -123,6 +123,23 @@ Untracked/private (still worth reading, just don't assume they're pushed):
   generically. Verified: 4 threaded NUTS chains on a conjugate model combine into one
   correctly-shaped chain with `FlexiChains.rhat` < 1.01 on both parameters (the M2
   milestone's own multi-chain gate) — see `test/sample.jl`.
+- **M4 (predictive utilities) is done**: `src/predict.jl` — `rand(model)`/`rand(model,n)`
+  (prior-predictive), `logjoint`/`logprior`/`loglikelihood_at(model, nt)` (log-density
+  at a fixed point), `returned(model, nt)` (the model body's own return value), and
+  `predict(model, draws)` + `chain_draws(chn::SymChain)` (posterior-predictive
+  sampling from a chain). All built on `PriorMode`/`FixedMode`, which were ALREADY
+  fully implemented since M1 with exactly this use in mind (see their docstrings in
+  `modes.jl`) — this milestone was mostly writing the convenience wrappers, except
+  for one real gap found and fixed along the way:
+  **`.~` observe sites had NO predictive-sampling branch** — `PriorMode`/`FixedMode`
+  would crash (`MethodError` on `missing`) instead of drawing fresh values, unlike
+  scalar `~` which already handled this correctly. Fixed in `tilde.jl`
+  (`_dot_rand`/`_dot_all_missing`) using the standard PPL convention: the observed
+  argument must be an `AbstractArray{Missing}` at the desired output SHAPE (e.g.
+  `fill(missing, n)`), not a bare `missing` scalar — a scalar-broadcast `dist_bcast`
+  (`Normal.(mu,sigma)` with scalar `mu`/`sigma`) carries no shape information on its
+  own, so the shape has to come from `y`. This matches DynamicPPL's own `predict`
+  convention exactly (its docs use the identical `fill(missing, n)` pattern).
 
 ## Known gaps / in-progress areas (as of this writing)
 
@@ -153,3 +170,12 @@ Untracked/private (still worth reading, just don't assume they're pushed):
   retrying it blindly — a manual, targeted smoke-test script (small model, explicit
   `println`s, run to completion in foreground) has been the more reliable way to get
   a real answer during this session.
+- **`test/comparison_env/` also works as a full, reliable test-running environment**
+  for the WHOLE package (not just the Turing-reference-generation it was originally
+  built for) — `Pkg.develop(path="../..")` PracticalBayes into it plus adding
+  `Bijectors`/`AdvancedHMC`/`FlexiChains` (needed directly by some test files, not
+  just transitively) makes `include("test/runtests.jl")`'s full `@testset` runnable
+  in one foreground `julia --project=test/comparison_env script.jl` call — this
+  avoids `Pkg.test()`'s own subprocess machinery, which is part of what's unreliable
+  here. Confirmed working end-to-end this way (163/163 passing) when `Pkg.test()`
+  itself kept producing no output.

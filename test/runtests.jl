@@ -10,5 +10,6 @@ using PracticalBayes
     include("optimize.jl")
     include("gibbs.jl")
     include("sample.jl")
+    include("predict.jl")
     include("turing_comparison.jl")
 end

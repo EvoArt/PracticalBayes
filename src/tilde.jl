@@ -16,6 +16,32 @@ using Distributions: Distributions, Distribution, logpdf, loglikelihood, Discret
 @inline _dot_loglik(dist_bcast::Distribution, y) = loglikelihood(dist_bcast, y)
 @inline _dot_loglik(dist_bcast, y) = sum(logpdf.(dist_bcast, y))
 
+# Posterior-predictive sampling for `.~` sites: `predict(rng, model, chain)`
+# calls the model with the observed argument replaced by an
+# `AbstractArray{Missing}` of the desired output SHAPE (the standard PPL
+# convention — DynamicPPL's own `predict` docs use exactly this
+# `fill(missing, length(...))` pattern) rather than a bare `missing` scalar,
+# because a scalar-broadcast `dist_bcast` (`Normal.(mu,sigma)` with scalar
+# `mu`/`sigma`) carries NO shape information on its own — the number of
+# observations to draw has to come from somewhere, and `y`'s shape is the
+# only place that's available once `y` is no longer real data.
+# `dist_bcast::Distribution` (the scalar-broadcast case) draws directly at
+# `y`'s size; the array-of-distinct-distributions case broadcasts `rand`
+# elementwise (each element may have different parameters).
+@inline _dot_rand(rng, dist_bcast::Distribution, y) = rand(rng, dist_bcast, size(y))
+@inline _dot_rand(rng, dist_bcast, y) = rand.(rng, dist_bcast)
+
+# `y` signals "sample me" for `.~` the same way a bare `missing`/`nothing`
+# does for scalar `~` — but shape must survive, so it's an ARRAY of missing,
+# not a bare `missing`. `y === nothing` (no argument at all, e.g. `rand(model)`
+# calling a model that was never given `y`) is treated the same way as long
+# as `dist_bcast` itself carries a shape (the array-of-distributions case);
+# for the scalar-broadcast case with `y === nothing` there's no shape
+# anywhere and this still needs a real `y` argument (whole-array-of-`missing`
+# or real data) — see the `y === nothing` guard left in each mode's own
+# method below, unchanged from before this predictive-sampling addition.
+_dot_all_missing(y) = y isa AbstractArray && all(ismissing, y)
+
 # Every method in this file is named `tilde`, `tilde_index`, or `tilde_dot`
 # and is called by compiler-generated code (see compiler.jl's
 # `_tilde_expansion`/`_dot_tilde_expansion`) with a first argument that is one
@@ -84,13 +110,34 @@ function tilde_dot(t::TraceMode, ::Val{s}, y, dist_bcast, acc::Accum) where {s}
     return acc_lik(acc, _dot_loglik(dist_bcast, y))
 end
 
-function tilde_dot(::PriorMode, ::Val, y, dist_bcast, acc::Accum)
+function tilde_dot(p::PriorMode, ::Val{s}, y, dist_bcast, acc::Accum) where {s}
     y === nothing && error("`.~` assume (unknown LHS) is not supported; use `x[i] ~ dist` or an array distribution")
+    if _dot_all_missing(y)
+        # rand(model) on a model whose observed argument is an array of
+        # `missing` (e.g. `predict`'s own machinery, or a user directly
+        # generating prior-predictive data) — sample fresh values instead of
+        # computing a likelihood against placeholders.
+        x = _dot_rand(p.rng, dist_bcast, y)
+        p.values[] = merge(p.values[], NamedTuple{(s,)}((x,)))
+        return acc_lik(acc, _dot_loglik(dist_bcast, x))
+    end
     return acc_lik(acc, _dot_loglik(dist_bcast, y))
 end
 
-function tilde_dot(::FixedMode, ::Val, y, dist_bcast, acc::Accum)
+function tilde_dot(f::FixedMode, ::Val{s}, y, dist_bcast, acc::Accum) where {s}
     y === nothing && error("`.~` assume (unknown LHS) is not supported; use `x[i] ~ dist` or an array distribution")
+    if _dot_all_missing(y)
+        if !f.predict
+            throw(ArgumentError("observe site `$s` has no data and `predict=false`; cannot evaluate logdensity"))
+        end
+        # See PriorMode's method above and `_dot_rand`'s docstring comment:
+        # this is the `.~` half of posterior-predictive sampling — the
+        # scalar-`~` equivalent of this branch already exists in `tilde`'s
+        # own FixedMode method (case 3 there).
+        x = _dot_rand(f.rng, dist_bcast, y)
+        f.values[] = merge(f.values[], NamedTuple{(s,)}((x,)))
+        return acc_lik(acc, _dot_loglik(dist_bcast, x))
+    end
     return acc_lik(acc, _dot_loglik(dist_bcast, y))
 end
 
