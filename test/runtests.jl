@@ -9,5 +9,6 @@ using PracticalBayes
     include("ad_backends.jl")
     include("optimize.jl")
     include("gibbs.jl")
+    include("sample.jl")
     include("turing_comparison.jl")
 end

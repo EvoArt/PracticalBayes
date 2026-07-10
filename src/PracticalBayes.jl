@@ -22,6 +22,7 @@ include("logdensity.jl")
 include("optimize.jl")
 include("latent.jl")
 include("gibbs.jl")
+include("sample.jl")
 
 export @model, Model, condition, decondition, @addlogprob!
 export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit
@@ -34,5 +35,6 @@ export maximum_a_posteriori, maximum_likelihood, laplace_approximation
 export PointEstimate, LaplaceApproximation, laplace_mvnormal
 export AbstractLatentKernel, ModelConditional, latent_step
 export Gibbs, GibbsState
+export SymChain
 
 end # module PracticalBayes

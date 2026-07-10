@@ -6,6 +6,7 @@ Manifest.toml
 /bench/report.html
 /bench/heatmap.html
 /bench/*_files/
+/bench
 devlog.md
 plan.md
 later considerations.md
