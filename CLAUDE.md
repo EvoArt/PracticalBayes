@@ -145,18 +145,53 @@ Untracked/private (still worth reading, just don't assume they're pushed):
   logdensity + gradient + short NUTS run, 8-thread chain independence). The
   8-thread-independence half is verified by actual execution (ran with 8 real
   threads, confirmed no shared-state leakage across chains). **The CUDA half has
-  NEVER been run on real GPU hardware** — this dev machine has `CUDA.functional()
-  == false` (confirmed directly: `CUDA.CuArray(...)` itself throws "CUDA driver
-  not functional" before any PracticalBayes code runs), so that part of the test
-  is code-reviewed-correct (confirmed the hot path never scalar-indexes into `θ`
-  — `_assume`/`_assume_index` in `tilde.jl` use `view(...)`, never `θ[i]` — and
-  the model-author-facing guarantee is "use array-variate observes", which the
-  test model does) but not execution-verified. Same caveat applies to
-  `benchmarks/gpu/gpu_sweep.jl` (a separate, NOT-CI-wired CPU-vs-GPU gradient-time
-  comparison across an N sweep, meant to be run by hand wherever a real GPU is
-  available — GitHub's standard hosted CI runners have none). Both files are
-  gated on `CUDA.functional()` and confirmed to skip/exit cleanly (not crash) in
-  a no-GPU environment — that much IS verified.
+  NEVER been run on real GPU hardware** — this dev machine (the primary Windows
+  laptop this session ran on) has no CUDA-capable device at all, only integrated
+  Intel UHD Graphics 620 (confirmed directly via `Get-CimInstance
+  Win32_VideoController` — no `nvidia-smi`, no discrete NVIDIA card), so
+  `CUDA.functional() == false` here is expected, not a driver/config problem to
+  chase. That part of the test is code-reviewed-correct (confirmed the hot path
+  never scalar-indexes into `θ` — `_assume`/`_assume_index` in `tilde.jl` use
+  `view(...)`, never `θ[i]` — and the model-author-facing guarantee is "use
+  array-variate observes", which the test model does) but not execution-verified.
+  Same caveat applies to `benchmarks/gpu/gpu_sweep.jl` (a separate, NOT-CI-wired
+  CPU-vs-GPU gradient-time comparison across an N sweep, meant to be run by hand
+  wherever a real GPU is available — GitHub's standard hosted CI runners have
+  none either). Both files are gated on `CUDA.functional()` and confirmed to
+  skip/exit cleanly (not crash) in a no-GPU environment — that much IS verified.
+  **No GPU speedup numbers exist yet for any model** — getting real numbers
+  requires running `gpu_sweep.jl` on different hardware (a cloud instance with an
+  NVIDIA GPU, a different physical machine), not just this dev environment.
+- **M6 (polish/stretch) is partially done.** Two of the six items plan.md
+  originally listed turned out to already be complete when re-checked this
+  session: Enzyme is already in the AD backend matrix (`test/ad_backends.jl`,
+  `benchmarks/sweep.jl`'s figure 3) — plan.md's "Enzyme deferred to M6" note was
+  stale. Missing-data handling also already exists: bare `missing`/`nothing`
+  means "sample this as a parameter" for scalar `~`, and `.~` sites use the
+  shape-carrying `fill(missing, n)` convention (built for M4's `predict`).
+  **Pointwise log-likelihoods are now implemented**: `src/predict.jl`'s
+  `pointwise_loglikelihoods(model, nt; flatten=false)`, backed by a new
+  `PointwiseMode` (`src/modes.jl`) with its own `tilde`/`tilde_index`/`tilde_dot`
+  methods (`src/tilde.jl`) — built as a genuinely separate, opt-in
+  re-evaluation mode (never touches the hot HMC path) specifically because
+  computing per-observation values requires `logpdf.(dist, y)` at every `.~`
+  site, which is the exact allocation that `.~`'s EvalMode fast path
+  (`Distributions.loglikelihood(dist, y)`, see `_dot_loglik`'s own docstring in
+  tilde.jl) is deliberately built to avoid — reusing `FixedMode` for this would
+  have meant either slowing down every other `FixedMode` use (`logjoint`,
+  `returned`, `predict`) or adding a flag to conditionally branch the hot
+  accumulation logic, both worse than a dedicated mode. Verified: per-site
+  summed pointwise values match the existing `loglikelihood_at` reference
+  exactly (both `.~` and indexed `x[i] ~` observe families), the missing-data
+  path throws a clear `ArgumentError` (fixed a real bug found during testing —
+  it originally hit a bare `MethodError` from `logpdf(dist, missing)` instead).
+  **Still open, deliberately not started**: sub-variable conditioning
+  (conditioning on part of a vector-valued variable, e.g. `model | (; x[3] =
+  5.0)` — currently only whole top-level names can be conditioned), AbstractPPL
+  `@of` shapes to skip the `TraceMode` run during `build_layout` (a startup-time
+  optimization, not a correctness gap), and fully-device θ (today θ always
+  lives on the CPU even when data is on the GPU — moving θ itself onto the
+  device is a bigger, riskier change to the sampling core, not attempted).
 
 ## Known gaps / in-progress areas (as of this writing)
 

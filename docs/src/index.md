@@ -20,7 +20,7 @@ using Distributions
 PracticalBayes.@model function demo(y)
     μ ~ Normal(0, 1)
     σ ~ Exponential(1)
-    y ~ PracticalBayes.arraydist(Normal.(μ, σ))
+    y .~ Normal.(μ, σ)
 end
 
 m = demo(randn(20))

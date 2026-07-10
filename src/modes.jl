@@ -118,6 +118,18 @@ end
 # (assumed and observed) into a NamedTuple for `rand(model)`.
 # ---------------------------------------------------------------------------
 
+"""
+    PriorMode{R<:AbstractRNG,TCond<:NamedTuple} <: AbstractEvalMode
+
+Evaluation mode backing `rand(model)`/`rand(model, n)`: every assumed site is
+drawn from its prior distribution (ignoring any conditioned value), and every
+site's value (assumed and observed) is recorded into `values[]` as the model
+runs, giving a full prior-predictive draw once evaluation completes.
+
+Deliberately not type-stable (`values[]`'s NamedTuple type grows one field per
+site) — an accepted tradeoff since `rand(model)` runs the model exactly once
+per call, unlike [`EvalMode`](@ref)'s hot HMC path.
+"""
 mutable struct PriorMode{R<:AbstractRNG,TCond<:NamedTuple} <: AbstractEvalMode
     rng::R
     conditioned::TCond
@@ -140,6 +152,28 @@ PriorMode(rng, conditioned) = PriorMode(rng, conditioned, Ref{NamedTuple}(NamedT
 # for `logprior`/`loglikelihood`/`logjoint` evaluation at a point.
 # ---------------------------------------------------------------------------
 
+"""
+    FixedMode{R<:AbstractRNG,TVals<:NamedTuple,TCond<:NamedTuple} <: AbstractEvalMode
+
+Evaluation mode that reads every assumed site from a fixed `NamedTuple` of
+values (`fixed`, e.g. one posterior draw) rather than sampling from a prior or
+reading from a flat `θ` vector. Backs [`returned`](@ref), the `Model`-level
+[`logjoint`](@ref)/[`logprior`](@ref)/[`loglikelihood_at`](@ref), and
+[`predict`](@ref) (via the `predict` flag below) — see each function's own
+docstring for the user-facing entry point; this struct is the shared mode they
+all evaluate the model under.
+
+Fields:
+- `fixed`: the point to evaluate assumed sites at.
+- `conditioned`: the model's own conditioned data (as for any other mode).
+- `predict`: if `true`, observe sites with no data attached (neither in
+  `conditioned` nor as a model argument) are *sampled* from the likelihood
+  instead of erroring — this is what makes `predict` distinct from
+  `logjoint`/`returned`, which require every observe site to resolve to real
+  data or fail loudly.
+- `values`: accumulates every site's value (assumed and observed) as the model
+  runs, so callers can read back a full draw afterwards.
+"""
 mutable struct FixedMode{R<:AbstractRNG,TVals<:NamedTuple,TCond<:NamedTuple} <: AbstractEvalMode
     rng::R
     fixed::TVals  # the point (e.g. one posterior draw) to evaluate at; assume sites read from here
@@ -160,3 +194,36 @@ end
 #     is exactly how posterior-predictive sampling works.
 FixedMode(rng, fixed, conditioned; predict=false) =
     FixedMode(rng, fixed, conditioned, predict, Ref{NamedTuple}(NamedTuple()))
+
+"""
+    PointwiseMode{TVals<:NamedTuple,TCond<:NamedTuple} <: AbstractEvalMode
+
+Evaluation mode backing [`pointwise_loglikelihoods`](@ref) (LOO-CV/WAIC-style
+model comparison, e.g. via ParetoSmooth.jl/ArviZ). Reads every assumed site
+from a fixed `NamedTuple` of values exactly like [`FixedMode`](@ref) with
+`predict=false` — same "every observe site must resolve to real data or
+error" contract — but instead of only summing observe-site log-densities into
+`Accum`, it ALSO records each site's PER-OBSERVATION `logpdf` values into
+`pointwise[]`, keyed by site name.
+
+This is a genuinely separate mode (not a `FixedMode` flag) because computing
+per-observation values requires `logpdf.(dist, y)` at every `.~` site — the
+opposite of the hot `EvalMode` path's whole optimization, which uses the
+allocation-free summed `Distributions.loglikelihood(dist, y)` specifically to
+avoid ever materializing that per-observation array (see tilde.jl's own
+`_dot_loglik` docstring). Keeping this as its own mode means the hot HMC path
+is completely untouched — this is a strictly opt-in, post-hoc re-evaluation,
+never run during sampling.
+
+Fields:
+- `fixed`: the point to evaluate assumed sites at (e.g. one posterior draw).
+- `conditioned`: the model's own conditioned data (as for any other mode).
+- `pointwise`: accumulates each observe site's `Vector` of per-observation
+  `logpdf` values, keyed by site name.
+"""
+mutable struct PointwiseMode{TVals<:NamedTuple,TCond<:NamedTuple} <: AbstractEvalMode
+    fixed::TVals
+    conditioned::TCond
+    pointwise::Ref{NamedTuple}
+end
+PointwiseMode(fixed, conditioned) = PointwiseMode(fixed, conditioned, Ref{NamedTuple}(NamedTuple()))

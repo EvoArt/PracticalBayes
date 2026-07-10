@@ -2,6 +2,14 @@
 
 This page documents the sampling and chain-building machinery introduced around `src/sample.jl`, `src/gibbs.jl`, and `src/latent.jl`.
 
+```@setup sampling
+using PracticalBayes
+using Distributions
+using AdvancedHMC
+using Random
+import AbstractMCMC
+```
+
 ## One-shot HMC/NUTS sampling
 
 `PracticalBayes` extends `AbstractMCMC.sample` for `Model` + AdvancedHMC samplers.

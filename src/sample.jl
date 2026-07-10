@@ -3,6 +3,18 @@ using AdvancedHMC: AdvancedHMC
 using FlexiChains: FlexiChains, SymChain
 
 """
+    SymChain
+
+Re-exported from FlexiChains.jl — the default `chain_type` returned by
+[`sample`](@ref). A `Symbol`-keyed `FlexiChains.FlexiChain`, indexable by
+`chn[:paramname]`; see FlexiChains.jl's own documentation for the full chain
+API (`FlexiChains.rhat`, `chainscat`/`chainsstack` for multi-chain combination,
+etc.). PracticalBayes only re-exports the name for convenience — it defines no
+behavior of its own on top of it.
+"""
+SymChain
+
+"""
     sample(rng, model::Model, spl::AdvancedHMC.AbstractHMCSampler, N;
            adtype=AutoForwardDiff(), init=NamedTuple(), chain_type=SymChain,
            kwargs...)

@@ -30,12 +30,34 @@ Accum(logprior, loglik) = Accum(promote(logprior, loglik)...)
 @inline acc_prior(a::Accum, x) = Accum(a.logprior + x, a.loglik)
 @inline acc_lik(a::Accum, x) = Accum(a.logprior, a.loglik + x)
 
+"""
+    logprior(a::Accum)
+
+The accumulated log-prior density (sum of `logpdf` + bijector log-|det J| over
+every assume site seen so far). See also [`logprior(model, nt)`](@ref) for the
+whole-model, named-tuple-argument version built on top of this.
+"""
 @inline logprior(a::Accum) = a.logprior
+
 # Named with a trailing underscore (not `loglikelihood`) to avoid colliding
 # with the `loglikelihood` generic function widely exported by
 # StatsAPI/Distributions/etc — a user doing `using PracticalBayes, Distributions`
 # would otherwise hit an ambiguous-name error merely from loading both.
+"""
+    loglikelihood_(a::Accum)
+
+The accumulated log-likelihood (sum of `logpdf` over every observe site seen so
+far). Trailing underscore avoids colliding with `Base`/`StatsAPI`'s exported
+`loglikelihood`. See also [`loglikelihood_at`](@ref) for the whole-model version.
+"""
 @inline loglikelihood_(a::Accum) = a.loglik
+
+"""
+    logjoint(a::Accum)
+
+`logprior(a) + loglikelihood_(a)` — the full log-joint density accumulated so
+far. See also [`logjoint(model, nt)`](@ref) for the whole-model version.
+"""
 @inline logjoint(a::Accum) = a.logprior + a.loglik
 
 Base.eltype(::Accum{T}) where {T} = T
