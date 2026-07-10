@@ -28,7 +28,7 @@ jobs:
       - uses: julia-actions/cache@v2
 
       - name: Instantiate benchmark environment
-        run: julia --project=benchmarks -e "using Pkg; Pkg.instantiate(); Pkg.develop(PackageSpec(path=pwd()))"
+        run: julia --project=benchmarks -e "using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()"
 
       - name: Run 5x5 benchmark sweep + plots
         run: julia --project=benchmarks benchmarks/sweep.jl
