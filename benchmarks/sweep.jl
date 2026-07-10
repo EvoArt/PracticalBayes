@@ -282,6 +282,15 @@ function main()
     CairoMakie.save(joinpath(figdir, "fig3_enzyme.png"), fig3)
     CairoMakie.save(joinpath(figdir, "fig4_fastest_per_ppl.png"), fig4)
 
+    # JSON has no Inf/NaN representation, but failed-backend cells (e.g.
+    # Mooncake on some Float32+bernoulli_logit combos, see devlog) legitimately
+    # produce them (Inf sentinel from the catch-block below; NaN from
+    # fastest_ratio_matrix when no backend succeeded for a cell) — JSON3.write
+    # errors on these by default, so map non-finite Float64s to `nothing`
+    # (JSON `null`) right at construction rather than fighting JSON3's writer.
+    json_safe(x::AbstractFloat) = isfinite(x) ? x : nothing
+    json_safe(x) = x
+
     rows = Any[]
     for T in precisions, lik in likelihoods, n in Ns, k in Ks
         cell = results[(T, lik, n, k)]
@@ -290,10 +299,10 @@ function main()
             "likelihood" => String(lik),
             "N" => n,
             "NPARAMS" => k,
-            "forwarddiff" => Dict("pb_ns" => cell[:forwarddiff][1], "turing_ns" => cell[:forwarddiff][2]),
-            "mooncake" => Dict("pb_ns" => cell[:mooncake][1], "turing_ns" => cell[:mooncake][2]),
-            "enzyme" => Dict("pb_ns" => cell[:enzyme][1], "turing_ns" => cell[:enzyme][2]),
-            "fastest_per_ppl_ratio" => fastest_ratio_matrix(results, lik, T, (n,), (k,))[1, 1],
+            "forwarddiff" => Dict("pb_ns" => json_safe(cell[:forwarddiff][1]), "turing_ns" => json_safe(cell[:forwarddiff][2])),
+            "mooncake" => Dict("pb_ns" => json_safe(cell[:mooncake][1]), "turing_ns" => json_safe(cell[:mooncake][2])),
+            "enzyme" => Dict("pb_ns" => json_safe(cell[:enzyme][1]), "turing_ns" => json_safe(cell[:enzyme][2])),
+            "fastest_per_ppl_ratio" => json_safe(fastest_ratio_matrix(results, lik, T, (n,), (k,))[1, 1]),
         ))
     end
 
