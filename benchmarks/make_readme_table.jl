@@ -28,8 +28,12 @@ end
 
 function backend_ratios(row, backend::String)
     cell = row[backend]
-    pb_ns = Float64(cell["pb_ns"])
-    tu_ns = Float64(cell["turing_ns"])
+    # sweep.jl writes JSON null (read back here as `nothing`) for a backend
+    # that failed on this cell (e.g. Mooncake on some Float32+bernoulli_logit
+    # combos) — map to NaN so the existing isfinite check in ratio() below
+    # handles it the same way as any other non-finite value.
+    pb_ns = cell["pb_ns"] === nothing ? NaN : Float64(cell["pb_ns"])
+    tu_ns = cell["turing_ns"] === nothing ? NaN : Float64(cell["turing_ns"])
     return ratio(pb_ns, tu_ns)
 end
 
