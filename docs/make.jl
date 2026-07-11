@@ -1,4 +1,5 @@
 using Documenter
+using Literate
 using PracticalBayes
 # `@docs` blocks resolve their target expression's binding in `Main` (this
 # process, not any per-page `@example`/`@setup` scope) — these need to be
@@ -6,6 +7,14 @@ using PracticalBayes
 # can't find `AbstractMCMC.sample`/`Random.rand(...)` to attach the docstring to.
 using AbstractMCMC
 using Random
+
+# Turn the runnable Literate tutorial into an executed markdown page, so the code
+# shown on the page is exactly what a reader would run.
+Literate.markdown(
+    joinpath(@__DIR__, "literate", "latent_trajectory.jl"),
+    joinpath(@__DIR__, "src", "tutorials");
+    documenter=true,
+)
 
 # Documenter configuration
 
@@ -18,6 +27,7 @@ makedocs(
     pages=[
         "Home" => "index.md",
         "Sampling" => "sampling.md",
+        "Latent-trajectory tutorial" => "tutorials/latent_trajectory.md",
         "Predictive utilities" => "predictive.md",
         "Float32 and GPU" => "float32_gpu.md",
     ],
