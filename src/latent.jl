@@ -17,11 +17,9 @@ a NUTS leapfrog/tree-doubling step — so a kernel is free to do arbitrary,
 non-differentiable work (discrete sampling, matrix factorizations, calling
 back into `rand`, etc).
 
-If a kernel's own struct carries MUTABLE internal state (e.g. an adaptive
-proposal's running acceptance count), make sure that state is safe to
-`deepcopy` — a future `MCMCThreads`-style multi-chain runner would isolate
-chains by deep-copying the sampler (matching how `AbstractMCMC.MCMCThreads`
-already isolates per-chain DI preps/tapes for the NUTS side).
+If a kernel's own struct carries mutable internal state (e.g. an adaptive
+proposal's running acceptance count), ensure that state is safe to `deepcopy`:
+`MCMCThreads` isolates chains by deep-copying the sampler.
 """
 abstract type AbstractLatentKernel end
 

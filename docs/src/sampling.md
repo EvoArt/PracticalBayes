@@ -1,6 +1,6 @@
 # Sampling and chains
 
-This page documents the sampling and chain-building machinery introduced around `src/sample.jl`, `src/gibbs.jl`, and `src/latent.jl`.
+This page covers running samplers on a model and working with the resulting chains: one-shot HMC/NUTS, Gibbs blocks, and custom latent-variable kernels.
 
 ```@setup sampling
 using PracticalBayes

@@ -1,9 +1,7 @@
 # Predictive utilities and log-density accessors
 
-This page documents `src/predict.jl` — prior-predictive sampling, posterior
-predictive sampling, and point-wise log-density evaluation, all built on top
-of `PracticalBayes.PriorMode` and `PracticalBayes.FixedMode` (see their own docstrings for
-the exact per-site semantics; this file is the convenience layer on top).
+Prior-predictive sampling, posterior-predictive sampling, log-density
+evaluation at a fixed point, and pointwise log-likelihoods.
 
 ## Prior and prior-predictive sampling
 
@@ -62,11 +60,10 @@ PracticalBayes.predict
 PracticalBayes.chain_draws
 ```
 
-`predict` is the one place un-conditioned observe sites *are* sampled
-(unlike `logjoint`/`returned`) — that's the whole point of a posterior
-predictive check. `chain_draws` turns a `SymChain` (as returned by
-`AbstractMCMC.sample`, see [Sampling](sampling.md)) back into the `Vector{NamedTuple}` form `predict` expects,
-so the usual flow is:
+`predict` samples un-conditioned observe sites from the likelihood (unlike
+`logjoint`/`returned`, which require real data at every observe site).
+`chain_draws` turns a `SymChain` (as returned by `AbstractMCMC.sample`, see
+[Sampling](sampling.md)) into the `Vector{NamedTuple}` form `predict` expects:
 
 ```@example
 using PracticalBayes
@@ -98,14 +95,10 @@ length(preds)
 PracticalBayes.pointwise_loglikelihoods
 ```
 
-`loglikelihood_at` above gives one summed scalar; LOO-CV/WAIC-style model
-comparison (e.g. via ParetoSmooth.jl or exporting to ArviZ) instead needs
-one log-likelihood value *per observation*. This is a separate, opt-in
-re-evaluation of the model — never run during sampling — because computing
-per-observation values requires `logpdf.(dist, y)` at every `.~` site, which
-is deliberately NOT what the hot HMC path computes (see
-`PracticalBayes.PointwiseMode`'s own docstring for why the fast summed
-`.~` path can't just be reused here).
+`loglikelihood_at` gives one summed scalar; LOO-CV/WAIC-style model comparison
+(e.g. via ParetoSmooth.jl or ArviZ) needs one log-likelihood value *per
+observation*. `pointwise_loglikelihoods` provides these through a separate
+re-evaluation of the model, independent of the sampling path.
 
 ```@example
 using PracticalBayes

@@ -57,16 +57,13 @@ _is_latent_block(b::GibbsBlock) = b.kernel isa AbstractLatentKernel
 # ===========================================================================
 
 # Sampler block: `layout` (flat = this block's names, values = every other
-# block's names) and `prep` (DI.prepare_gradient) are each built EXACTLY
-# ONCE, at first-step initialization, and never rebuilt — only `store`'s
-# VALUES change sweep to sweep (its field-name set, and therefore the type
-# `prep` was built against, is fixed for the lifetime of a Gibbs run), so
-# reusing `prep` across sweeps via LogDensityFunction's inner constructor is
-# safe and avoids re-tracing/re-preparing the AD backend every single sweep
-# (verified directly: reusing `prep` against a changed-value/same-shape
-# `store` produces bit-identical gradients to a from-scratch
-# LogDensityFunction — see logdensity.jl's docstring on the inner
-# constructor for the general statement of this guarantee).
+# block's names) and `prep` (DI.prepare_gradient) are each built once, at
+# first-step initialization, and never rebuilt — only `store`'s values change
+# sweep to sweep (its field-name set, and therefore the type `prep` was built
+# against, is fixed for the lifetime of a Gibbs run), so reusing `prep` across
+# sweeps via LogDensityFunction's inner constructor avoids re-preparing the AD
+# backend every sweep. See logdensity.jl's inner-constructor docstring for the
+# validity condition.
 struct GibbsSamplerSub{L<:Layout,AD,P,S}
     layout::L
     adtype::AD
@@ -148,14 +145,12 @@ Draws (or takes from `init`) a starting constrained-space value for every
 assumed model variable. `records` is one `SiteRecord` per tilde site VISIT
 — for an ordinary scalar `x ~ dist` that's one record, but for an indexed
 family (`x[i] ~ dist` inside a loop) it's one record PER INDEX, all sharing
-the same `name`. Mirrors `build_layout`'s own by-name grouping (layout.jl)
-so an indexed family's initial value ends up as the full vector/array
-(ordered by first-seen index), not just whichever record happens to be
-last in `records` — the naive "one Dict entry per name, keep overwriting"
-approach silently collapses a whole latent trajectory (e.g. an HMM's `z`)
-down to its last timestep's scalar value, which is a correctness bug, not
-just a style nit (confirmed the hard way: it crashes downstream inside
-`_assume_index` with a `BoundsError` from indexing a scalar `Int`).
+the same `name`. Mirrors `build_layout`'s by-name grouping (layout.jl) so an
+indexed family's initial value is the full vector/array (ordered by first-seen
+index), not just the last record for that name. Collapsing a family to its last
+element would leave a scalar where a whole latent trajectory (e.g. an HMM's `z`)
+is expected, and `_assume_index` would then hit a `BoundsError` indexing that
+scalar.
 """
 function _gibbs_init_values(records, init::NamedTuple)
     seen_order = Symbol[]
@@ -173,9 +168,8 @@ function _gibbs_init_values(records, init::NamedTuple)
             # strictly checks that every later sweep's `store` has the
             # exact same types `prep` was built against — a `Vector{Any}`
             # here vs. a concretely-typed `Vector{Int64}` from a real
-            # `latent_step` call is a genuine type mismatch that DI
-            # correctly rejects at sweep time with a `PreparationMismatchError`
-            # (confirmed the hard way).
+            # `latent_step` call is a type mismatch that DI rejects at sweep
+            # time with a `PreparationMismatchError`.
             by_name[r.name] = [r.init_val]
         else
             push!(by_name[r.name], r.init_val)
@@ -227,35 +221,17 @@ end
 """
     AbstractMCMC.step(rng, model::Model, spl::Gibbs, state::GibbsState; n_adapts=0, kwargs...)
 
-One Gibbs sweep: a fixed (systematic-scan) pass over `spl.blocks` in
-declaration order. A LATENT block calls `latent_step` exactly once — this
-call is lexically outside any AD entry point (the only functions ever
-passed to `DI.prepare_gradient`/`DI.value_and_gradient` are
-`_logdensity_call`/`_loglikelihood_call` in logdensity.jl) and outside
-AdvancedHMC's internal leapfrog/tree-doubling loop (entirely private to a
-SAMPLER block's own `AbstractMCMC.step` call below) — this lexical
-separation, not a runtime flag, is what guarantees a latent kernel never
-runs mid-gradient. A SAMPLER block rebuilds its `LogDensityFunction` against
-every OTHER block's current value (reusing the cached `Layout`/`prep` from
-`GibbsSamplerSub`, never rebuilding either), refreshes the cached
-`HMCState`'s phasepoint via `setparams!!` (or takes a fresh first step if
-this is the block's first-ever sweep), then steps.
+Perform one Gibbs sweep: a systematic-scan pass over `spl.blocks` in
+declaration order. A latent block calls `latent_step` once; a sampler (HMC)
+block conditions on the current values of every other block and takes one
+HMC step. Latent kernels are never invoked inside a gradient or leapfrog step.
 
-IMPORTANT — `n_adapts` GOTCHA (an AdvancedHMC calling-convention quirk, not
-specific to Gibbs, but easy to hit here): pass `n_adapts` as its FINAL
-target value on every call, starting from the very first sweep — do NOT
-ramp it up (e.g. `n_adapts=min(sweep, 500)`). AdvancedHMC's windowed
-`StanHMCAdaptor` calls `initialize!(adaptor, n_adapts)` — which locks in
-the entire Stan-style adaptation window schedule — only on a block's
-FIRST-EVER internal step; whatever `n_adapts` value is passed on that first
-call fixes the window size for the rest of the run, regardless of what's
-passed on later sweeps. Passing a small value on sweep 1 (e.g. via a
-`min(i, n_adapts)` ramp starting at `i=1`) silently disables step-size/mass-
-matrix adaptation for the block's entire lifetime — the chain still runs
-and still (very slowly) explores via NUTS's own occasional lucky proposals,
-so this fails silently as a badly-mixing, highly-autocorrelated chain
-rather than an error. Confirmed directly while building this milestone's
-test suite.
+Pass `n_adapts` as its final target value on every call, from the first sweep
+onward — do not ramp it up (e.g. `min(sweep, 500)`). AdvancedHMC's windowed
+adaptor fixes its adaptation-window schedule from the `n_adapts` given on a
+block's first step; a small value there disables step-size and mass-matrix
+adaptation for the block's entire run, producing a poorly-mixing chain with no
+error.
 """
 function AbstractMCMC.step(rng::Random.AbstractRNG, model::Model, spl::Gibbs, state::GibbsState; n_adapts::Int=0, kwargs...)
     values = state.values

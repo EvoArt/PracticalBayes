@@ -62,7 +62,7 @@ _is_discrete(d) = Distributions.value_support(typeof(d)) <: Discrete
 # assume path: `Bijectors.VectorBijectors`'s constrained transforms hardcode
 # Float64 bounds (e.g. `from_linked_vec(Exponential(1f0))` builds
 # `Exp{Float64}(0.0, 1)`, whose `sign*exp(y) + 0.0` promotes a Float32 `y` to
-# Float64 — verified regardless of the distribution's own eltype, since
+# Float64 regardless of the distribution's own eltype, since
 # `minimum(Exponential(1f0)) === 0.0`). Left uncoerced, that Float64 value
 # flows into any downstream likelihood distribution built from it (e.g.
 # `Normal.(mu, sigma)`), forcing the dominant large-`n` likelihood loop into
