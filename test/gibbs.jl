@@ -15,6 +15,7 @@ using AdvancedHMC: NUTS
 using StableRNGs: StableRNG
 import AbstractMCMC
 using Statistics: mean, std
+using Random: Random
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: diag
 using ADTypes: ADTypes
@@ -247,4 +248,75 @@ end
         transition, state = AbstractMCMC.step(rng, m, spl, state; n_adapts=100)
     end
     @test true  # reaching here without the kernel's internal @assert firing IS the test
+end
+
+# ===========================================================================
+# Whole-array (matrix) latent block round-trips through a Gibbs sweep.
+#
+# The individual-level iFFBS / epidemic use case stores an entire hidden-state
+# trajectory (an individual x time `Matrix{Int}`) as ONE latent variable in
+# the value-store, sampled by a custom kernel and read back by an
+# `@addlogprob!` likelihood term as an AD-constant. This gate confirms a
+# whole `DiscreteMatrixDistribution` latent site: (1) traces without needing a
+# `linked_vec_length` (custom discrete matrix dists don't define one, and a
+# latent site never occupies θ anyway); (2) round-trips as a `Matrix{Int}`
+# through `build_layout`'s value-store; and (3) preserves its matrix shape
+# across a full Gibbs sweep while the continuous NUTS block still identifies
+# its parameter. This is the PracticalBayes-side prerequisite for the
+# EpidemicTrajectories package's iFFBS kernel.
+# ===========================================================================
+
+@testset "gibbs.jl: whole-matrix latent block round-trips" begin
+    # A minimal discrete matrix "latent trajectory" distribution: Discrete
+    # value support so `build_layout` tags the site `:latent` and routes it to
+    # the value-store. Only needs `size`/`rand`/`logpdf` to trace.
+    struct GridLatent <: Distributions.DiscreteMatrixDistribution
+        nrows::Int
+        ncols::Int
+    end
+    Base.size(d::GridLatent) = (d.nrows, d.ncols)
+    Distributions.rand(rng::Random.AbstractRNG, d::GridLatent) = rand(rng, 0:1, d.nrows, d.ncols)
+    Distributions.logpdf(::GridLatent, X::AbstractMatrix) = 0.0  # improper; real coupling via @addlogprob!
+
+    @model function grid_model(y, nrows, ncols)
+        mu ~ Normal(0, 1)
+        X ~ GridLatent(nrows, ncols)
+        # `X` enters the likelihood as an AD-constant (ValueSlot): the summed
+        # state is pulled toward `mu`, giving NUTS real signal on `mu` while
+        # the discrete `X` is never differentiated.
+        @addlogprob! -0.5 * (sum(X) - mu)^2
+        y ~ Normal(mu, 1.0)
+    end
+
+    # Kernel: resample every cell as Bernoulli(logistic(mu)). Returns a Matrix{Int}.
+    struct GridKernel <: AbstractLatentKernel
+        nrows::Int
+        ncols::Int
+    end
+    function PracticalBayes.latent_step(rng, k::GridKernel, block_names, c::ModelConditional)
+        block_names == (:X,) || error("only :X")
+        p = 1 / (1 + exp(-c.values.mu))
+        return (; X=Int.(rand(rng, k.nrows, k.ncols) .< p))
+    end
+
+    nrows, ncols = 4, 5
+    m = grid_model(3.0, nrows, ncols)
+
+    # (1)+(2): traces, and X round-trips as a Matrix{Int} in the store.
+    layout, θ0, store0 = build_layout(m; values=(:X,))
+    @test store0.X isa AbstractMatrix{<:Integer}
+    @test size(store0.X) == (nrows, ncols)
+    @test length(θ0) == 1  # only `mu` occupies θ; `X` does not
+
+    # (3): shape survives a full Gibbs sweep loop; NUTS block keeps stepping.
+    spl = Gibbs(:mu => NUTS(0.8), :X => GridKernel(nrows, ncols))
+    rng = StableRNG(1)
+    transition, state = AbstractMCMC.step(rng, m, spl)
+    @test transition.X isa AbstractMatrix{<:Integer}
+    @test size(transition.X) == (nrows, ncols)
+    for i in 1:50
+        transition, state = AbstractMCMC.step(rng, m, spl, state; n_adapts=50)
+        @test size(transition.X) == (nrows, ncols)
+    end
+    @test transition.mu isa Float64
 end

@@ -308,7 +308,16 @@ function tilde(t::TraceMode, ::Val{s}, dist, value, acc::Accum) where {s}
     # rest of the model body (e.g. if a later line uses this variable).
     x0 = haskey(t.init, s) ? getfield(t.init, s) : rand(t.rng, dist)
     role = _is_discrete(dist) ? :latent : :param
-    push!(t.sites, SiteRecord(s, dist, linked_vec_length(dist), role, x0))
+    # `linked_vec_length` is the size this site would occupy in the flat
+    # unconstrained vector θ — but a `:latent`-role site NEVER lives in θ (it
+    # goes to the value-store as a `ValueSlot`, see build_layout), so its
+    # linked length is meaningless AND `linked_vec_length` isn't even defined
+    # for arbitrary discrete distributions (e.g. a custom
+    # `DiscreteMatrixDistribution` whole-trajectory latent — the entire point
+    # of the epi/iFFBS use case). Only ask for a linked length when the site
+    # is actually a continuous parameter; record 0 for latents.
+    linked_len = role == :latent ? 0 : linked_vec_length(dist)
+    push!(t.sites, SiteRecord(s, dist, linked_len, role, x0))
     return x0, acc_prior(acc, logpdf(dist, x0))
 end
 
@@ -321,7 +330,11 @@ function tilde_index(t::TraceMode, ::Val{s}, container, idx::Tuple, dist, acc::A
     x0 = rand(t.rng, dist)
     container[k] = x0
     role = _is_discrete(dist) ? :latent : :param
-    push!(t.sites, SiteRecord(s, dist, linked_vec_length(dist), role, x0))
+    # See the scalar `tilde` above: a discrete/latent indexed family never
+    # occupies θ, so skip `linked_vec_length` (undefined for custom discrete
+    # element distributions) and record 0.
+    linked_len = role == :latent ? 0 : linked_vec_length(dist)
+    push!(t.sites, SiteRecord(s, dist, linked_len, role, x0))
     return x0, acc_prior(acc, logpdf(dist, x0))
 end
 
