@@ -9,5 +9,9 @@ Manifest.toml
 /bench
 devlog.md
 plan.md
-later considerations.md# Literate-generated markdown (regenerated at docs build time from docs/literate/)
+later considerations.md
+# Literate-generated markdown (regenerated at docs build time from docs/literate/)
 /docs/src/tutorials/
+# Benchmark sweep figures live under figures/ locally; the tracked ones are
+# regenerated/committed by the benchmark CI, not by hand.
+figures/
