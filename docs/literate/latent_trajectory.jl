@@ -67,14 +67,25 @@ observed_days = 1:6:n_times
 Rmask = fill(-1, size(R))
 Rmask[:, observed_days] .= R[:, observed_days]
 
+# ## Bundle the epidemic model and data
+#
+# EpidemicTrajectories works in three parts: `model` (the parameters), `X` (the
+# latent trajectory), and `data` (the observations plus group structure).
+# `epidemic_model` captures the fixed structure and returns `loglik(model, X,
+# data)` and an in-place latent update `latent!(rng, model, X, data)`;
+# `build_data` bundles the observations once. These are all we need on the
+# PracticalBayes side — the epidemic details stay behind these closures.
+
+em = EpidemicTrajectories.epidemic_model(ss, rates; tests = (rams,))
+data = EpidemicTrajectories.build_data(em, group; observations = (Rmask,))
+
 # ## Reserve the hidden trajectory as a discrete latent variable
 #
 # The hidden state matrix `X` (animals × time) is represented as a matrix-valued
 # discrete distribution. PracticalBayes routes a discrete `~` site to the value
 # store — a latent block updated by a kernel, held constant during HMC gradients
-# — instead of putting it in the parameter vector. Its density is supplied
-# through `@addlogprob!` in the model body, so the distribution itself
-# contributes nothing.
+# — instead of putting it in the parameter vector. Its density comes from
+# `em.loglik` in the model body, so the distribution itself contributes nothing.
 
 struct TrajectoryLatent <: Distributions.DiscreteMatrixDistribution
     n_ind::Int
@@ -88,25 +99,15 @@ Distributions.rand(rng::Random.AbstractRNG, d::TrajectoryLatent) = zeros(Int, d.
 #
 # A latent kernel is a subtype of [`AbstractLatentKernel`](@ref) with one method,
 # [`latent_step`](@ref), returning a `NamedTuple` of new values for its block. It
-# reads the current values of the other blocks from `c.values` and, here, calls
-# EpidemicTrajectories' `ffbs_sweep!` to resample the whole trajectory.
+# reads the current values of the other blocks from `c.values` and resamples the
+# whole trajectory in place with `em.latent!`.
 
-struct iFFBS{RB<:RateBundle} <: PracticalBayes.AbstractLatentKernel
-    ss::StateSpace
-    rates::RB
-    group::Vector{Int}
-    tests::Tuple{DiagnosticTest}
-    results::Tuple{Matrix{Int}}
-end
-
-function PracticalBayes.latent_step(rng, k::iFFBS, block_names, c::ModelConditional)
+struct iFFBSKernel <: PracticalBayes.AbstractLatentKernel end
+function PracticalBayes.latent_step(rng, ::iFFBSKernel, block_names, c::ModelConditional)
     pars = (; α = c.values.α, β = c.values.β, m = c.values.m̃ + 1.0, θ = c.values.θ)
     X = copy(c.values.X)
-    d = EpidemicTrajectories.make_data(X, k.group)
-    model = (; state_space = k.ss, rates = k.rates, pars = pars)
-    EpidemicTrajectories.ffbs_sweep!(rng, model, d, k.tests, k.results;
-                                     initial_prob = [1 - c.values.ν, c.values.ν])
-    return (; X = d.states)
+    em.latent!(rng, pars, X, data; initial_prob = [1 - c.values.ν, c.values.ν])
+    return (; X = X)
 end
 
 # ``\nu`` and ``\theta`` have closed-form conditional posteriors, so we give them
@@ -136,12 +137,12 @@ end
 # ## The model
 #
 # The continuous parameters get priors; the hidden trajectory is the latent
-# variable; and the trajectory log-likelihood is added with `@addlogprob!`. The
-# latent `X` is read here as a constant, so gradients flow only through the
-# parameters. We reparameterise the infectious period as ``m = \tilde m + 1`` so
-# the recovery probability stays below one.
+# variable; and its log-likelihood is added with `@addlogprob! em.loglik(pars,
+# X)`. The latent `X` is read here as a constant, so gradients flow only through
+# the parameters. We reparameterise the infectious period as ``m = \tilde m + 1``
+# so the recovery probability stays below one.
 
-@model function cattle_model(Rmask, group, ss, rates, n_ind, n_times)
+@model function cattle_model(em, data, n_ind, n_times)
     α ~ Gamma(1, 1)
     β ~ Gamma(1, 1)
     m̃ ~ Gamma(2, 4)
@@ -150,11 +151,7 @@ end
     θ ~ Beta(1, 1)
 
     X ~ TrajectoryLatent(n_ind, n_times)
-
-    pars = (; α = α, β = β, m = m, θ = θ)
-    data = EpidemicTrajectories.make_data(X, group)
-    model = (; state_space = ss, rates = rates, pars = pars)
-    @addlogprob! EpidemicTrajectories.trajectory_loglik(pars, model, data)
+    @addlogprob! em.loglik((; α = α, β = β, m = m, θ = θ), X, data)
 end
 
 # ## Compose the sampler and run
@@ -164,13 +161,13 @@ end
 # the iFFBS kernel for the hidden trajectory. `sample` runs the sweeps and
 # returns a chain; `discard_initial` drops burn-in.
 
-m = cattle_model(Rmask, group, ss, rates, n_ind, n_times)
+m = cattle_model(em, data, n_ind, n_times)
 
 spl = Gibbs(
     (:α, :β, :m̃) => NUTS(0.8),
     :ν => NuKernel(),
     :θ => ThetaKernel(Rmask),
-    :X => iFFBS(ss, rates, group, (rams,), (Rmask,)),
+    :X => iFFBSKernel(),
 )
 
 X0, _ = simulate_trajectory(StableRNG(99), ss, rates, true_pars, group,
