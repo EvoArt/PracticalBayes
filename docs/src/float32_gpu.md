@@ -17,12 +17,12 @@ computation — silent promotion back to Float64 is the main pitfall:
   any `Float32` computation touching it back to `Float64`.
 - **Vector-valued prior means need `paramtype`, not `zeros(k)`.**
   `zeros(paramtype(__mode__), k)`, not bare `zeros(k)` (which defaults to
-  `Float64`) — see `PracticalBayes.paramtype` for how the mode tracks the "current"
-  element type. This is easy to get wrong in a way that still runs and still
-  produces correct numbers, just silently back in Float64.
+  `Float64`) — see `PracticalBayes.paramtype` for how the mode tracks the current
+  element type. A bare `zeros(k)` still runs and still produces correct numbers,
+  but silently reverts the computation to Float64.
 - **Data (`X`/`y`) can stay `Float64`** without breaking Float32 propagation
-  through the gradient or costing performance — confirmed directly. Only
-  parameters and distribution literals need the `f0`/`paramtype` treatment.
+  through the gradient or costing performance. Only parameters and distribution
+  literals need the `f0`/`paramtype` treatment.
 - **`AdvancedHMC.NUTS(δ)` fixes its step-size type to `typeof(δ)`.** Passing
   a bare `0.8` (`Float64`) together with a `Float32` `θ0` fails during
   step-size adaptation — use `NUTS(eltype(θ0)(0.8))` or, equivalently,
@@ -70,10 +70,10 @@ eltype(grad)
 ## GPU
 
 **Scope**: the parameter vector `θ` stays on the CPU; *data* (`X`, `y`) can
-live on the GPU (`CUDA.CuArray`). This is deliberately narrower than a
-fully-device `θ` (tracked as an open M6 item) — it targets the common case
-where the model's per-observation work (a matrix-multiply, a vectorized
-observe) is the expensive part, not the parameter count.
+live on the GPU (`CUDA.CuArray`). This targets the common case where the
+model's per-observation work (a matrix-multiply, a vectorized observe) is the
+expensive part, not the parameter count. A fully-device `θ` is not currently
+supported.
 
 **The framework guarantee**: no framework-introduced scalar indexing.
 Parameter reads in the hot path are `view(θ, range)`, never `θ[i]` one
@@ -111,8 +111,5 @@ ldf = PracticalBayes.LogDensityFunction(m, layout, store0, ADTypes.AutoForwardDi
 LogDensityProblems.logdensity_and_gradient(ldf, θ0)  # matmul/observe run on GPU, gradient assembled on CPU
 ```
 
-This exact pattern is exercised by `test/gpu/cuda.jl` (gated on
-`CUDA.functional()`) and benchmarked (CPU vs GPU gradient time across an N
-sweep) by `benchmarks/gpu/gpu_sweep.jl`, meant to be run by hand on a
-machine with a real, working GPU — GitHub's standard hosted CI runners have
-none, so this isn't part of the always-on CI benchmark sweep.
+GPU support requires a CUDA-capable device; `θ0` remains a CPU `Vector` while
+the model's array operations run on the GPU.

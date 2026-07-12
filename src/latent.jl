@@ -17,23 +17,27 @@ a NUTS leapfrog/tree-doubling step — so a kernel is free to do arbitrary,
 non-differentiable work (discrete sampling, matrix factorizations, calling
 back into `rand`, etc).
 
-If a kernel's own struct carries MUTABLE internal state (e.g. an adaptive
-proposal's running acceptance count), make sure that state is safe to
-`deepcopy` — a future `MCMCThreads`-style multi-chain runner would isolate
-chains by deep-copying the sampler (matching how `AbstractMCMC.MCMCThreads`
-already isolates per-chain DI preps/tapes for the NUTS side).
+If a kernel's own struct carries mutable internal state (e.g. an adaptive
+proposal's running acceptance count), ensure that state is safe to `deepcopy`:
+`MCMCThreads` isolates chains by deep-copying the sampler.
 """
 abstract type AbstractLatentKernel end
 
 """
     ModelConditional(model, values)
 
-Passed to `latent_step`. `values` is a NamedTuple holding every OTHER
-Gibbs block's current (constrained-space) value — i.e. everything needed to
-evaluate this block's conditional distribution given the rest of the model.
-Data isn't duplicated into `values`: read it directly off `c.model.args`
-(the model's own call arguments) or `c.model.conditioned`, exactly as you
-would from inside the `@model` body itself.
+Passed to `latent_step`. `values` is a NamedTuple holding the current
+(constrained-space) value of every assumed model variable — i.e. everything
+needed to evaluate this block's conditional distribution given the rest of the
+model. This INCLUDES this block's own current value (it's built from the full
+merged state before the current block is resampled), so a
+Metropolis-within-Gibbs kernel that needs its own previous value (e.g. a
+move-events / occult-infection proposal) can read it from `c.values` directly;
+an exact-conditional kernel (FFBS, conjugate Gibbs) simply ignores its own
+entry and reads only the OTHER blocks' values it conditions on. Data isn't
+duplicated into `values`: read it directly off `c.model.args` (the model's own
+call arguments) or `c.model.conditioned`, exactly as you would from inside the
+`@model` body itself.
 """
 struct ModelConditional{M<:Model,V<:NamedTuple}
     model::M

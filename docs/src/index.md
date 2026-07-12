@@ -29,4 +29,4 @@ ldf = PracticalBayes.LogDensityFunction(m, layout, store0, ADTypes.AutoForwardDi
 LogDensityProblems.logdensity_and_gradient(ldf, θ0)
 ```
 
-See [Sampling](sampling.md) for the new sampling/chain APIs (`sample`, `Gibbs`, `AbstractLatentKernel`, `SymChain`).
+See [Sampling](sampling.md) for the sampling and chain APIs (`sample`, `Gibbs`, `AbstractLatentKernel`, `SymChain`).
