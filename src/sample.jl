@@ -64,6 +64,70 @@ function AbstractMCMC.sample(
     return AbstractMCMC.bundle_samples(nt_transitions, ldm, spl, state, chain_type)
 end
 
+"""
+    sample(rng, model::Model, spl::Gibbs, N;
+           init=NamedTuple(), adtype=AutoForwardDiff(), n_adapts=0,
+           discard_initial=0, chain_type=SymChain, kwargs...)
+
+Run a [`Gibbs`](@ref) sampler on `model` for `N` sweeps and return the draws.
+
+Each sweep updates every block once (NUTS for HMC blocks, `latent_step` for
+latent-kernel blocks). By default the result is a `FlexiChains.SymChain` with
+one key per model variable. `discard_initial` drops that many leading sweeps
+(burn-in); `n_adapts` is passed to every HMC block on every sweep and, as with
+AdvancedHMC generally, should be its final target value from the first sweep on
+(see [`Gibbs`](@ref)'s step docstring). `init` supplies starting values for any
+named variables.
+
+Pass `chain_type=nothing` to get the raw `Vector` of per-sweep `NamedTuple`
+transitions instead of a chain.
+
+Note that a variable whose value is an array (e.g. a latent state matrix) is
+stored per draw as that array; scalar parameters index and summarize as usual.
+"""
+function AbstractMCMC.sample(
+    rng::Random.AbstractRNG,
+    model::Model,
+    spl::Gibbs,
+    N::Integer;
+    init=NamedTuple(),
+    adtype=ADTypes.AutoForwardDiff(),
+    n_adapts::Int=0,
+    discard_initial::Int=0,
+    chain_type=SymChain,
+    kwargs...,
+)
+    # First sweep builds the per-block layouts/preps and takes one step; every
+    # later sweep reuses them. We keep `N` sweeps after discarding the first
+    # `discard_initial` as burn-in.
+    t, state = AbstractMCMC.step(rng, model, spl; init=init, adtype=adtype, n_adapts=n_adapts, kwargs...)
+    for _ in 1:discard_initial
+        t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
+    end
+    transitions = Vector{NamedTuple}(undef, N)
+    # When there is no burn-in, the very first sweep (`t` above) is the first
+    # kept draw; otherwise `t` currently holds the last discarded sweep and the
+    # first kept draw comes from the next step.
+    if discard_initial == 0
+        transitions[1] = t
+        for i in 2:N
+            t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
+            transitions[i] = t
+        end
+    else
+        for i in 1:N
+            t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
+            transitions[i] = t
+        end
+    end
+
+    chain_type === nothing && return transitions
+    # A Gibbs transition is already a constrained-parameter NamedTuple, so
+    # FlexiChains' generic `to_nt_and_stats(::NamedTuple)` bundles it directly
+    # (no params/stats split to preserve, unlike the AdvancedHMC path below).
+    return AbstractMCMC.bundle_samples(transitions, model, spl, state, chain_type)
+end
+
 # `bundle_samples` receives whatever `AbstractMCMC.step` returns as a
 # "transition" — for AdvancedHMC that's `AdvancedHMC.Transition` (a `PhasePoint`
 # plus a stats `NamedTuple`), not a plain `NamedTuple`. We collect the raw

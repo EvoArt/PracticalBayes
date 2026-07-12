@@ -146,3 +146,48 @@ end
     all_mu = vec(chns[:mu])
     @test abs(mean(all_mu) - post_mean) < 0.15
 end
+
+@testset "sample.jl: Gibbs sampler returns a SymChain" begin
+    # `sample(rng, model, ::Gibbs, N)` runs the sweeps and bundles the draws
+    # into a SymChain, so a Gibbs model gets the same one-call interface as a
+    # plain NUTS model (no hand-rolled AbstractMCMC.step loop).
+    using Distributions: Beta
+    import PracticalBayes
+
+    @model function conj(y)
+        mu ~ Normal(0, 1)
+        z ~ Normal(mu, 1)
+        y ~ Normal(z, 0.5)
+    end
+    struct ExactZ <: AbstractLatentKernel end
+    function PracticalBayes.latent_step(rng, ::ExactZ, block_names, c::ModelConditional)
+        y = c.model.args.y
+        mu = c.values.mu
+        post_prec = 1.0 + 1 / 0.5^2
+        post_mean = mu + (1 / 0.5^2) * (y - mu) / post_prec
+        return (; z=rand(rng, Normal(post_mean, sqrt(1 / post_prec))))
+    end
+
+    y_obs = 2.0
+    m = conj(y_obs)
+    spl = Gibbs(:mu => NUTS(0.8), :z => ExactZ())
+    rng = StableRNG(1)
+
+    chn = AbstractMCMC.sample(rng, m, spl, 1500; n_adapts=300, discard_initial=500)
+    @test chn isa FlexiChains.SymChain
+    @test size(chn, 1) == 1500          # N kept draws (burn-in discarded)
+
+    # analytic posterior mean of mu for this linear-Gaussian model
+    Sigma = [1.0 1.0; 1.0 2.0]; H = [0.0 1.0]; R = 0.25
+    post_cov = inv(inv(Sigma) + H' * (1 / R) * H)
+    analytic_mu = (post_cov * (H' * (1 / R) * [y_obs]))[1]
+    mu_draws = vec(chn[:mu])
+    se = std(mu_draws) / sqrt(length(mu_draws))
+    @test abs(mean(mu_draws) - analytic_mu) < 4 * se
+
+    # chain_type=nothing gives the raw per-sweep NamedTuple transitions
+    raw = AbstractMCMC.sample(rng, m, spl, 50; n_adapts=50, chain_type=nothing)
+    @test length(raw) == 50
+    @test raw[1] isa NamedTuple
+    @test haskey(raw[1], :mu) && haskey(raw[1], :z)
+end

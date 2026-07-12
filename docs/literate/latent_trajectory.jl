@@ -34,8 +34,8 @@ using Random
 using AdvancedHMC: NUTS
 import AbstractMCMC
 using StableRNGs: StableRNG
-using Statistics: mean, std
-using FlexiChains: FlexiChain, Parameter
+using Statistics: mean
+using FlexiChains
 using CairoMakie
 
 # ## Simulate the data
@@ -161,7 +161,8 @@ end
 #
 # Each variable is assigned to exactly one `Gibbs` block: NUTS for the continuous
 # transmission parameters, the conjugate kernels for ``\nu`` and ``\theta``, and
-# the iFFBS kernel for the hidden trajectory.
+# the iFFBS kernel for the hidden trajectory. `sample` runs the sweeps and
+# returns a chain; `discard_initial` drops burn-in.
 
 m = cattle_model(Rmask, group, ss, rates, n_ind, n_times)
 
@@ -176,46 +177,33 @@ X0, _ = simulate_trajectory(StableRNG(99), ss, rates, true_pars, group,
                             [1 - true_ν, true_ν]; n_times = n_times)
 init = (; X = copy(X0), α = 0.05, β = 0.05, m̃ = 4.0, ν = 0.1, θ = 0.7)
 
-n_sweeps, n_burn, n_adapts = 1500, 500, 400
-rng_fit = StableRNG(7)
-
-draws = (α = Float64[], β = Float64[], m = Float64[], ν = Float64[], θ = Float64[])
-transition, state = AbstractMCMC.step(rng_fit, m, spl; init = init)
-for _ in 1:n_sweeps
-    global transition, state
-    transition, state = AbstractMCMC.step(rng_fit, m, spl, state; n_adapts = n_adapts)
-    push!(draws.α, transition.α)
-    push!(draws.β, transition.β)
-    push!(draws.m, transition.m̃ + 1.0)
-    push!(draws.ν, transition.ν)
-    push!(draws.θ, transition.θ)
-end
+chn = AbstractMCMC.sample(StableRNG(7), m, spl, 1000;
+                          init = init, n_adapts = 400, discard_initial = 500)
 
 # ## Check the recovery
+#
+# We compare the posterior means to the values we simulated from. The infectious
+# period is ``m = \tilde m + 1``.
 
-post = map(v -> v[(n_burn + 1):end], draws)
-for (name, truth) in ((:α, true_pars.α), (:β, true_pars.β), (:m, true_pars.m),
-                      (:ν, true_ν), (:θ, true_θ))
-    p = getfield(post, name)
-    println(rpad(name, 3), " mean ", round(mean(p); digits = 4),
-            "  (truth ", truth, ")")
+posterior_m = vec(chn[:m̃]) .+ 1.0
+recovered = (α = vec(chn[:α]), β = vec(chn[:β]), m = posterior_m,
+             ν = vec(chn[:ν]), θ = vec(chn[:θ]))
+truths = (α = true_pars.α, β = true_pars.β, m = true_pars.m, ν = true_ν, θ = true_θ)
+
+for name in (:α, :β, :m, :ν, :θ)
+    println(rpad(name, 3), " mean ", round(mean(getfield(recovered, name)); digits = 4),
+            "  (truth ", getfield(truths, name), ")")
 end
 
 # ## Plot
 #
-# We collect the draws into a chain and plot each parameter's posterior density
-# with a line at the value we simulated from.
+# We plot each parameter's posterior density with a line at the value we
+# simulated from.
 
-chn = FlexiChain{Symbol}(length(post.α), 1, Dict(
-    Parameter(:α) => post.α, Parameter(:β) => post.β, Parameter(:m) => post.m,
-    Parameter(:ν) => post.ν, Parameter(:θ) => post.θ,
-))
-
-truths = (α = true_pars.α, β = true_pars.β, m = true_pars.m, ν = true_ν, θ = true_θ)
 fig = Figure(size = (900, 500))
 for (i, name) in enumerate((:α, :β, :m, :ν, :θ))
     ax = Axis(fig[fldmod1(i, 3)...]; title = string(name), ylabel = "density")
-    density!(ax, getfield(post, name))
+    density!(ax, getfield(recovered, name))
     vlines!(ax, [getfield(truths, name)]; color = :firebrick, linewidth = 2)
 end
 fig
