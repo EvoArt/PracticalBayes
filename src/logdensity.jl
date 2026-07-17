@@ -86,8 +86,28 @@ end
 @inline function _logdensity_call(θ, model::Model, layout::Layout, store::NamedTuple)
     mode = EvalMode(layout, θ, store, model.conditioned)
     _, acc = evaluate(model, mode, Accum(zero(eltype(θ))))
-    return logjoint(acc)
+    # Coerce the result back to `eltype(θ)`. The accumulator promotes to the
+    # widest type it sees (accumulator.jl), so a Float32 `θ` running a model
+    # written with Float64 distribution literals — OR merely one whose *data*
+    # (`y`/`X`) is Float64, which we explicitly document as allowed — produces
+    # a Float64-primal logjoint even though the parameters are Float32. Plain
+    # ForwardDiff/Mooncake/Enzyme tolerate that value/gradient type mismatch,
+    # but PolyesterForwardDiff does not: its `threaded_gradient!` stores the
+    # primal into a `Ref{eltype(θ)}` via `store_val!(::Ref{T}, ::T)`, which
+    # `MethodError`s the moment the primal is Float64 and `θ` is Float32.
+    # Coercing here makes the returned type track `eltype(θ)` exactly, fixing
+    # PolyesterForwardDiff and costing nothing on the (already-matching) common
+    # path. `_coerce_eltype` is a no-op when the types already agree.
+    return _coerce_eltype(logjoint(acc), θ)
 end
+
+# `θ` under ForwardDiff-family backends is a `Vector{<:Dual}`, so `eltype(θ)`
+# is that Dual type and `convert` correctly narrows a Float64-primal Dual to a
+# Float32-primal one (primal AND partials). For a plain `Vector{Float32}`
+# (density-only path) it's an ordinary `Float64 -> Float32` convert. The
+# same-type case (`V === eltype(θ)`) hits the identity method and is elided.
+@inline _coerce_eltype(v::V, θ::AbstractVector{V}) where {V} = v
+@inline _coerce_eltype(v, θ) = convert(eltype(θ), v)
 
 # Likelihood-only variant of `_logdensity_call`, used by `maximum_likelihood`
 # (optimize.jl) — identical evaluation, just reads off `loglikelihood_(acc)`
@@ -96,7 +116,9 @@ end
 @inline function _loglikelihood_call(θ, model::Model, layout::Layout, store::NamedTuple)
     mode = EvalMode(layout, θ, store, model.conditioned)
     _, acc = evaluate(model, mode, Accum(zero(eltype(θ))))
-    return loglikelihood_(acc)
+    # Same `eltype(θ)` coercion as `_logdensity_call` above — keeps the
+    # optimize.jl likelihood path usable under PolyesterForwardDiff too.
+    return _coerce_eltype(loglikelihood_(acc), θ)
 end
 
 # Shared by both `reject_errors` branches below: an exception during

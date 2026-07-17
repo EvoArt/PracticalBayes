@@ -328,11 +328,16 @@ function invlink(layout::Layout, θ::AbstractVector; include_untracked=false)
             # space; `with_logabsdet_jacobian` returns `(value, logjac)` — we
             # only need `value` here (the Jacobian only matters inside
             # `tilde.jl`'s accumulation, not for reporting constrained draws).
-            x, _ = with_logabsdet_jacobian(from_linked_vec(recs[1].dist_exemplar), view(θ, slot.range))
+            # `_linked_view` (tilde.jl), not `view` — see its docstring for why
+            # a bijector must always be fed a `Base.SubArray`. `θ` here is a
+            # plain chain draw, so this can't currently hit the exotic-array
+            # case, but keeping every bijector call site on the one helper means
+            # the invariant holds if that ever changes.
+            x, _ = with_logabsdet_jacobian(from_linked_vec(recs[1].dist_exemplar), _linked_view(θ, slot.range))
             push!(pairs_out, name => x)
         else # FlatArraySlot
             elems = map(1:length(recs)) do i
-                x, _ = with_logabsdet_jacobian(from_linked_vec(recs[i].dist_exemplar), view(θ, elem_range(slot, i)))
+                x, _ = with_logabsdet_jacobian(from_linked_vec(recs[i].dist_exemplar), _linked_view(θ, elem_range(slot, i)))
                 x
             end
             push!(pairs_out, name => elems)

@@ -79,6 +79,38 @@ _is_discrete(d) = Distributions.value_support(typeof(d)) <: Discrete
 # promotion to undo there.
 @inline _to_paramtype(::Type, x) = x
 
+"""
+    _linked_view(θ, range)
+
+The sub-vector of `θ` holding one variable's unconstrained representation, as
+handed to `Bijectors`' `with_logabsdet_jacobian`. Always a `Base.SubArray`, on
+purpose — this is NOT the same as `view(θ, range)`.
+
+`view` is overloadable, and some array types an AD backend hands us as `θ`
+overload it to return their own view type instead of a `Base.SubArray`.
+`PolyesterForwardDiff` is the case that bit us: when a model's parameter vector
+spans more than one chunk, it passes `θ` as a `StrideArraysCore.StrideArray`,
+so `view(θ, range)` is a `StrideArray` too. That breaks scalar parameters,
+because `Bijectors.VectorBijectors.OnlyWrap` — the length-1-vector-to-scalar
+wrapper used for EVERY scalar site (`sigma ~ Exponential(1)`, etc.) — extracts
+the element with a zero-argument `getindex`, `x[]`
+(`Bijectors/src/vector/univariate/univariate.jl`). `StrideArray` implements
+`x[1]` but NOT `x[]`, and the zero-index path bottoms out in `first(())`, so
+the whole gradient dies with a bewildering `ArgumentError: tuple must be
+non-empty` from deep inside StrideArraysCore.
+
+Constructing the `Base.SubArray` directly bypasses the `view` overload while
+staying exactly as lazy — no copy, no allocation, element reads still delegate
+to the parent's own (`x[1]`-style) indexing, which every such array type does
+support. So this keeps the hot path allocation-free AND gives `OnlyWrap` the
+`Base` indexing semantics it assumes.
+
+Fixing it here (rather than at each call site) means `_assume`,
+`_assume_index`, and `layout.jl`'s invlink all get it — every place a bijector
+is fed a slice of θ.
+"""
+@inline _linked_view(θ, range) = Base.SubArray(θ, (range,))
+
 # ===========================================================================
 # `.~` (dot-tilde) — MVP supports OBSERVE only: `y .~ Normal.(μ, σ)` where `y`
 # is already-bound data (a model argument or conditioned value). This
@@ -194,7 +226,7 @@ end
 # must add to the accumulated log-density for a correct change-of-variables
 # (this is the "includes bijector log-|det J|" part of Accum's docstring).
 @inline function _assume(slot::FlatSlot, m::EvalMode, ::Val, dist, acc::Accum)
-    x_raw, logjac = with_logabsdet_jacobian(from_linked_vec(dist), view(m.θ, slot.range))
+    x_raw, logjac = with_logabsdet_jacobian(from_linked_vec(dist), _linked_view(m.θ, slot.range))
     # Undo any Float64 promotion introduced by the constrained bijector's
     # hardcoded Float64 bounds (see `_to_paramtype` above), so `x` stays in
     # the working precision `eltype(m.θ)` and any downstream distribution
@@ -261,7 +293,7 @@ end
 # into `container[k]` — this is what makes `x` (the user's pre-declared
 # array) hold real values after the model runs, e.g. for use in a `return x`.
 @inline function _assume_index(slot::FlatArraySlot, m::EvalMode, ::Val, container, k::Int, dist, acc::Accum)
-    x_raw, logjac = with_logabsdet_jacobian(from_linked_vec(dist), view(m.θ, elem_range(slot, k)))
+    x_raw, logjac = with_logabsdet_jacobian(from_linked_vec(dist), _linked_view(m.θ, elem_range(slot, k)))
     # Same Float64-promotion fix as `_assume(::FlatSlot,...)`. `container`'s
     # element type is already `paramtype(__mode__) == eltype(m.θ)` (see the
     # `tilde_index` docstring), so the coerced `x` stores without a further
