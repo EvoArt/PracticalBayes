@@ -20,9 +20,11 @@ MacroTools = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 
 [weakdeps]
+JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 Optimization = "7f7a1694-90dd-40f0-9382-eb1efda571ba"
 
 [extensions]
+PracticalBayesJLD2Ext = "JLD2"
 PracticalBayesOptimizationExt = "Optimization"
 
 [compat]
@@ -36,6 +38,7 @@ DifferentiationInterface = "0.6, 0.7"
 Distributions = "0.25"
 FlexiChains = "0.6"
 ForwardDiff = "0.10, 1"
+JLD2 = "0.4, 0.5, 0.6"
 LogDensityProblems = "2"
 MacroTools = "0.5"
 Optimization = "3, 4, 5"

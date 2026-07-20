@@ -7,6 +7,7 @@ Manifest.toml
 /bench/heatmap.html
 /bench/*_files/
 /bench
+/badger_ref
 devlog.md
 plan.md
 later considerations.md

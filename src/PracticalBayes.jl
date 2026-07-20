@@ -11,6 +11,13 @@ using AbstractPPL: AbstractPPL
 # it, so `using PracticalBayes` alone is sufficient for the AD defaults to work.
 using ForwardDiff: ForwardDiff
 
+# AdvancedHMC is a hard dependency (the HMC/NUTS samplers a Gibbs block wraps).
+# Re-export its samplers and AbstractMCMC's `sample` so `using PracticalBayes`
+# alone is enough to build a model, pick a sampler, and run it — no second
+# `using AdvancedHMC`/`using AbstractMCMC` needed at the call site.
+using AbstractMCMC: AbstractMCMC, sample
+using AdvancedHMC: HMC, NUTS, HMCDA
+
 include("accumulator.jl")
 include("distributions.jl")
 include("modes.jl")
@@ -21,6 +28,8 @@ include("compiler.jl")
 include("logdensity.jl")
 include("optimize.jl")
 include("latent.jl")
+include("conjugate.jl")
+include("save_states.jl")
 include("gibbs.jl")
 include("sample.jl")
 include("predict.jl")
@@ -35,8 +44,12 @@ export evaluate, paramtype
 export maximum_a_posteriori, maximum_likelihood, laplace_approximation
 export PointEstimate, LaplaceApproximation, laplace_mvnormal
 export AbstractLatentKernel, ModelConditional, latent_step
+export ConjugateGibbs
 export Gibbs, GibbsState
+export SaveToChain, SaveToBuffer, SaveToDisk, write_state_chunk!, read_states
 export SymChain
+# Re-exported so `using PracticalBayes` is self-contained for running inference:
+export sample, HMC, NUTS, HMCDA
 export returned, predict, chain_draws, loglikelihood_at, pointwise_loglikelihoods
 
 end # module PracticalBayes
