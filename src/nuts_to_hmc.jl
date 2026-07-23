@@ -88,7 +88,11 @@ AdvancedHMC.getmetric(s::NUTSthenHMCState) = AdvancedHMC.getmetric(s.inner)
 AdvancedHMC.getintegrator(s::NUTSthenHMCState) = AdvancedHMC.getintegrator(s.inner)
 AbstractMCMC.getparams(s::NUTSthenHMCState) = AbstractMCMC.getparams(s.inner)
 AbstractMCMC.getstats(s::NUTSthenHMCState) = AbstractMCMC.getstats(s.inner)
-function AbstractMCMC.setparams!!(model, s::NUTSthenHMCState, params)
+# `model` is typed `AbstractModel` to match AbstractMCMC's own signature exactly —
+# an untyped `model` here ties with `setparams!!(::AbstractModel, state, params)`
+# (both specialise exactly one argument, neither dominates), which Julia reports
+# as an ambiguity the first time `Gibbs` sets the block's params.
+function AbstractMCMC.setparams!!(model::AbstractMCMC.AbstractModel, s::NUTSthenHMCState, params)
     s.inner = AbstractMCMC.setparams!!(model, s.inner, params)
     return s
 end
