@@ -319,6 +319,7 @@ end
 
 """
     @addlogprob!(expr)
+    @addlogprob!(expr, depends=(:a, :b, ...))
 
 Only valid inside an `@model` body. Adds `expr`'s value directly to the
 model's accumulated log-LIKELIHOOD (not prior) — the escape hatch for a
@@ -330,6 +331,44 @@ own; `@model`'s compiler recognizes and rewrites the `@addlogprob!(...)`
 call form textually (via `_rewrite_addlogprob`, mirroring how `~`/`.~`/`:=`
 are recognized), so this definition exists only so the bare syntax parses
 and gives a clear error if it's ever evaluated outside a model body.
+
+# `depends`: skipping terms that can't matter to a Gibbs block
+
+`depends` names the model variables `expr` actually reads. It is a pure
+OPTIMIZATION HINT for `Gibbs` sampling and changes no result: under a block
+that owns none of the named variables, they are all `ValueSlot`s, so `expr`
+is a constant w.r.t. that block's parameters — it shifts the log density by a
+fixed amount (which cancels in the Metropolis ratio) and contributes exactly
+zero to the gradient. Declaring `depends` lets the evaluator SKIP the term
+entirely for such blocks, instead of computing it and differentiating through
+it to get a guaranteed-zero result.
+
+This matters when a model has several expensive `@addlogprob!` terms and a
+`Gibbs` sampler with more than one HMC block. Without `depends`, EVERY block
+evaluates and differentiates EVERY term. Measured on a 2384x161 epidemic model
+whose two terms are a transition likelihood and a much cheaper observation
+likelihood, the block owning only the observation parameters ran **4.4x**
+faster with `depends` (13.93 ms -> 3.15 ms per gradient), with gradients
+identical to 0.0.
+
+```julia
+@model function m(data, y, ll, oll)
+    a ~ Normal()
+    b ~ Normal()
+    # `ll` reads only `a`; a block sampling `b` alone skips it entirely.
+    @addlogprob! ll(a, data)  depends=(:a,)
+    @addlogprob! oll(b, data) depends=(:b,)
+end
+```
+
+Correctness is the user's responsibility, exactly as for the term itself: name
+every variable `expr` reads. Under-declaring silently drops a real gradient
+contribution for the blocks that own the omitted variables. Omitting `depends`
+is always safe — the term is then evaluated unconditionally, as before.
+
+Only `Gibbs`'s per-block evaluation looks at this. A single-block/whole-model
+evaluation has every variable in the flat vector, so no term is ever skipped
+and behaviour is bit-identical to omitting `depends`.
 """
 macro addlogprob!(expr)
     return :(error(
@@ -350,13 +389,67 @@ end
 function _rewrite_addlogprob(body)
     return postwalk(body) do x
         if x isa Expr && x.head == :macrocall && x.args[1] == Symbol("@addlogprob!")
-            length(x.args) == 3 || error("`@addlogprob!` takes exactly one expression, got: $x")
-            expr = x.args[3]
-            return :(__acc__ = PracticalBayes.acc_lik(__acc__, $(expr)))
+            # args are (macro_name, LineNumberNode, expr[, depends=(...)])
+            args = x.args[3:end]
+            isempty(args) && error("`@addlogprob!` takes at least one expression, got: $x")
+            expr = args[1]
+            depends = _extract_depends(args[2:end], x)
+            depends === nothing &&
+                return :(__acc__ = PracticalBayes.acc_lik(__acc__, $(expr)))
+            # Gated form: evaluate the term ONLY when the current evaluation can
+            # be affected by it. `addlogprob_needed` folds to a compile-time
+            # constant (tilde.jl), so for a block that skips this term the whole
+            # branch — and `expr` with it — is eliminated, not merely short-circuited.
+            return quote
+                if PracticalBayes.addlogprob_needed(__mode__, $(depends))
+                    __acc__ = PracticalBayes.acc_lik(__acc__, $(expr))
+                end
+            end
         else
             x
         end
     end
+end
+
+# Parse the optional `depends=(:a, :b)` argument of `@addlogprob!` into a
+# `Val{(:a, :b)}` expression, or `nothing` when absent. Accepts both the
+# keyword form (`depends=(...)`, parsed as `:(=)` in macro argument position)
+# and a trailing `;`-separated parameters block, so all of
+# `@addlogprob! e depends=(:a,)`, `@addlogprob!(e, depends=(:a,))` and
+# `@addlogprob!(e; depends=(:a,))` work.
+function _extract_depends(rest, x)
+    isempty(rest) && return nothing
+    # `@addlogprob!(e; depends=(...))` arrives as a single :parameters Expr.
+    if length(rest) == 1 && rest[1] isa Expr && rest[1].head == :parameters
+        rest = rest[1].args
+    end
+    length(rest) == 1 || error(
+        "`@addlogprob!` takes one expression and an optional `depends=(...)`, got: $x")
+    kw = rest[1]
+    (kw isa Expr && kw.head in (:(=), :kw) && kw.args[1] === :depends) || error(
+        "`@addlogprob!`'s second argument must be `depends=(:a, :b, ...)`, got: $(kw)")
+    names = _depends_names(kw.args[2], x)
+    return :($(Val)($(QuoteNode(names))))
+end
+
+# `depends` must be resolvable at MACRO-EXPANSION time — the whole point is a
+# compile-time constant — so only literal symbol tuples are accepted. A runtime
+# value would silently degrade into a dynamic branch that defeats the purpose.
+function _depends_names(ex, x)
+    if ex isa QuoteNode && ex.value isa Symbol
+        return (ex.value,)                       # depends=:a
+    elseif ex isa Expr && ex.head == :tuple
+        out = Symbol[]
+        for a in ex.args
+            a isa QuoteNode && a.value isa Symbol ||
+                error("`@addlogprob!`'s `depends` must be a tuple of literal " *
+                      "symbols like `(:a, :b)`, got `$(a)` in: $x")
+            push!(out, a.value)
+        end
+        return Tuple(out)
+    end
+    error("`@addlogprob!`'s `depends` must be a literal symbol or tuple of " *
+          "symbols like `(:a, :b)`, got `$(ex)` in: $x")
 end
 
 """

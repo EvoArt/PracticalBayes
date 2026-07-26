@@ -181,6 +181,44 @@ end
 # ===========================================================================
 
 """
+    addlogprob_needed(mode, ::Val{names}) -> Bool
+
+Whether an `@addlogprob!` term declaring `depends=names` can affect the current
+evaluation's GRADIENT — i.e. whether any name in `names` is in the flat vector
+(a `FlatSlot`) rather than the constant store (a `ValueSlot`).
+
+This backs the `depends=` form of [`@addlogprob!`](@ref). Under a Gibbs block
+that owns none of `names`, every one of them is a `ValueSlot`, so the term is a
+CONSTANT w.r.t. that block's parameters: it shifts the log density by a fixed
+amount, which cancels in the Metropolis ratio and contributes exactly zero to
+the gradient. Skipping it is therefore exact, not an approximation.
+
+`Val{names}` plus the `Layout`'s isbits, fully-typed `slots` NamedTuple means
+this whole predicate folds to a compile-time `true`/`false` per block, so the
+skipped term costs nothing at runtime — not even a branch.
+
+Every non-`EvalMode` mode returns `true`: `TraceMode` must visit the term to
+discover sites, and `PriorMode`/`LogProbMode` want the real total, not a
+block-relative one.
+"""
+@inline addlogprob_needed(::AbstractEvalMode, ::Val) = true
+
+@inline function addlogprob_needed(mode::EvalMode, ::Val{names}) where {names}
+    return _any_flat(mode.layout, Val(names))
+end
+
+# Recursive over the tuple of names so each `getproperty(slots, n)` is a
+# distinct, inferable call — a `for`/`any` over `names` would infer the loop
+# variable as a Symbol union and defeat the constant-folding this depends on
+# (the same tuple-iteration trap documented in EpidemicTrajectories' CLAUDE.md).
+@inline _any_flat(layout, ::Val{()}) = false
+@inline function _any_flat(layout, ::Val{names}) where {names}
+    n = first(names)
+    hasproperty(layout.slots, n) && !(getproperty(layout.slots, n) isa ValueSlot) && return true
+    return _any_flat(layout, Val(Base.tail(names)))
+end
+
+"""
     tilde(mode::EvalMode, ::Val{s}, dist, value, acc) where {s}
 
 OBSERVE path: `value` is a concrete (non-`nothing`, non-`missing`) data value

@@ -19,6 +19,8 @@ using Random: Random
 using ForwardDiff: ForwardDiff
 using LinearAlgebra: diag
 using ADTypes: ADTypes
+using LogDensityProblems: LogDensityProblems
+using PracticalBayes: AdaptiveHMC
 
 # ===========================================================================
 # Gate (a): exact-conditional kernel matches analytic posterior.
@@ -319,4 +321,117 @@ end
         @test size(transition.X) == (nrows, ncols)
     end
     @test transition.mu isa Float64
+end
+
+# ===========================================================================
+# `@addlogprob! ... depends=(...)` — skipping terms a Gibbs block cannot move.
+#
+# Without `depends`, every HMC block evaluates and differentiates EVERY
+# `@addlogprob!` term, including ones that are constant w.r.t. that block's
+# parameters. `depends` lets the evaluator skip those.
+#
+# The skip is EXACT, and these tests pin down exactly why: for a block that
+# skips a term, the term is an additive CONSTANT, so
+#   (1) the gradient is bit-identical,
+#   (2) log-density DIFFERENCES (all Metropolis ever uses) are identical,
+#   (3) only the ABSOLUTE log density shifts, by exactly the term's value.
+#
+# NOTE these do NOT assert that two sampled CHAINS match draw-for-draw. They
+# don't, and that is correct: AdvancedHMC's initial step-size search reads the
+# absolute density, so the constant offset makes it pick a slightly different
+# step size, after which the chains diverge like any two runs with different
+# step sizes — while targeting the same posterior.
+@testset "@addlogprob! depends: skipped terms are exact constants" begin
+    n = 200
+    rng = StableRNG(20260726)
+    y = randn(rng, n) .+ 2.0
+    z = randn(rng, n) .- 1.0
+
+    term_a(a, y) = -0.5 * sum(abs2, y .- a)
+    term_b(b, z) = -0.5 * sum(abs2, z .- b)
+
+    @model function m_plain(y, z)
+        a ~ Normal(0, 10)
+        b ~ Normal(0, 10)
+        @addlogprob! term_a(a, y)
+        @addlogprob! term_b(b, z)
+    end
+    @model function m_dep(y, z)
+        a ~ Normal(0, 10)
+        b ~ Normal(0, 10)
+        @addlogprob! term_a(a, y) depends=(:a,)
+        @addlogprob! term_b(b, z) depends=(:b,)
+    end
+
+    # Build a block-`b` layout (b flat, a in the constant store) for each model.
+    function ldf_b(model, aval)
+        layout, θ0, _ = PracticalBayes.build_layout(model; flat=(:b,), values=(:a,),
+                                                    init=(; a=aval, b=0.0))
+        PracticalBayes.LogDensityFunction(model, layout, (; a=aval),
+                                          ADTypes.AutoForwardDiff(); θ0=θ0)
+    end
+
+    aval = 2.0
+    f_p, f_d = ldf_b(m_plain(y, z), aval), ldf_b(m_dep(y, z), aval)
+    bs = -2.0:0.5:2.0
+
+    # (1) gradients identical — the skipped term has zero derivative here.
+    for b in bs
+        _, g_p = LogDensityProblems.logdensity_and_gradient(f_p, [b])
+        _, g_d = LogDensityProblems.logdensity_and_gradient(f_d, [b])
+        @test g_p ≈ g_d atol=0 rtol=0
+    end
+
+    # (3) the offset is constant in b and equals the skipped term's value.
+    offs = [LogDensityProblems.logdensity(f_p, [b]) -
+            LogDensityProblems.logdensity(f_d, [b]) for b in bs]
+    @test maximum(offs) - minimum(offs) < 1e-9
+    @test offs[1] ≈ term_a(aval, y) rtol=1e-10
+
+    # (2) Metropolis-relevant differences are unchanged.
+    ref = -1.0
+    d_p = [LogDensityProblems.logdensity(f_p, [b]) -
+           LogDensityProblems.logdensity(f_p, [ref]) for b in bs]
+    d_d = [LogDensityProblems.logdensity(f_d, [b]) -
+           LogDensityProblems.logdensity(f_d, [ref]) for b in bs]
+    @test d_p ≈ d_d rtol=1e-9
+
+    # A block owning BOTH names skips nothing: identical absolute density too.
+    function ldf_all(model)
+        layout, θ0, _ = PracticalBayes.build_layout(model; flat=(:a, :b), values=(),
+                                                    init=(; a=0.0, b=0.0))
+        PracticalBayes.LogDensityFunction(model, layout, NamedTuple(),
+                                          ADTypes.AutoForwardDiff(); θ0=θ0)
+    end
+    g_p, g_d = ldf_all(m_plain(y, z)), ldf_all(m_dep(y, z))
+    for θ in ([0.0, 0.0], [1.5, -0.5], [2.2, -1.3])
+        @test LogDensityProblems.logdensity(g_p, θ) ==
+              LogDensityProblems.logdensity(g_d, θ)
+    end
+
+    # Sampling with depends recovers the right posterior (both blocks).
+    spl = Gibbs(:a => AdaptiveHMC(0.8; n_leapfrog=8),
+                :b => AdaptiveHMC(0.8; n_leapfrog=8))
+    chn = AbstractMCMC.sample(StableRNG(3), m_dep(y, z), spl, 400;
+                              init=(; a=0.0, b=0.0), n_adapts=150, progress=false)
+    @test mean(vec(chn[:a])) ≈ 2.0 atol=0.2
+    @test mean(vec(chn[:b])) ≈ -1.0 atol=0.2
+end
+
+# `depends` must reject anything it cannot resolve at macro-expansion time —
+# the whole point is a compile-time constant, and a runtime value would
+# silently degrade into a dynamic branch that defeats the optimization.
+@testset "@addlogprob! depends: rejects non-literal name lists" begin
+    @test_throws LoadError @eval @model function _bad_dep1(y)
+        a ~ Normal()
+        @addlogprob! 0.0 depends=(a,)          # not a QuoteNode symbol
+    end
+    @test_throws LoadError @eval @model function _bad_dep2(y)
+        a ~ Normal()
+        @addlogprob! 0.0 depends=somevar       # not a literal tuple
+    end
+    @test_throws LoadError @eval @model function _bad_dep3(y)
+        a ~ Normal()
+        @addlogprob! 0.0 wrongkw=(:a,)         # wrong keyword name
+    end
 end
