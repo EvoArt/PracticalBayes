@@ -257,7 +257,22 @@ function AbstractMCMC.step(rng::Random.AbstractRNG, model::Model, spl::Gibbs, st
             ldm = AbstractMCMC.LogDensityModel(ldf)
 
             if sub.hmc_state === nothing
-                _, hmc_state = AbstractMCMC.step(rng, ldm, block.kernel; initial_params=θ_now, kwargs...)
+                # `n_adapts` MUST be passed here, not only on subsequent steps.
+                # AdvancedHMC initialises the Stan windowed adaptor from inside
+                # `adapt!`, and ONLY on the block's very first HMC step
+                # (`sampler.jl`: `i == 1 && Adaptation.initialize!(adaptor, n_adapts)`),
+                # which is itself guarded by `adapt = i <= n_adapts`. Defaulting
+                # `n_adapts` to 0 here made that guard false on step 1, so
+                # `initialize!` never ran, the adaptor kept `window(0, 0)` with no
+                # window splits, and the MASS MATRIX WAS NEVER UPDATED — every run
+                # sampled with the identity metric. The step size still adapted
+                # (dual averaging needs no window), which is what made this silent:
+                # chains looked tuned and merely mixed badly.
+                # Verified by driving AdvancedHMC's step path directly with and
+                # without `n_adapts` on the first step: without it the adaptor
+                # reports `window(0, 0)` and `M⁻¹ ≈ I`; with it, `window(76, 150)`
+                # and a correctly recovered metric.
+                _, hmc_state = AbstractMCMC.step(rng, ldm, block.kernel; initial_params=θ_now, n_adapts=n_adapts, kwargs...)
             else
                 refreshed = AbstractMCMC.setparams!!(ldm, sub.hmc_state, θ_now)
                 _, hmc_state = AbstractMCMC.step(rng, ldm, block.kernel, refreshed; n_adapts=n_adapts, kwargs...)
