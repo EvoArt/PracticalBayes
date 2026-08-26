@@ -31,8 +31,10 @@ include("latent.jl")
 include("conjugate.jl")
 include("save_states.jl")
 include("gibbs.jl")
+include("check_depends.jl")
 include("nuts_to_hmc.jl")
 include("adaptive_hmc.jl")
+include("progress.jl")
 include("sample.jl")
 include("predict.jl")
 
@@ -48,10 +50,12 @@ export PointEstimate, LaplaceApproximation, laplace_mvnormal
 export AbstractLatentKernel, ModelConditional, latent_step
 export ConjugateGibbs
 export Gibbs, GibbsState
+export check_depends, DependsReport
 export SaveToChain, SaveToBuffer, SaveToDisk, write_state_chunk!, read_states
 export SymChain
 # Re-exported so `using PracticalBayes` is self-contained for running inference:
 export sample, HMC, NUTS, HMCDA, NUTSthenHMC, AdaptiveHMC
+export default_progress
 export returned, predict, chain_draws, loglikelihood_at, pointwise_loglikelihoods
 
 end # module PracticalBayes
