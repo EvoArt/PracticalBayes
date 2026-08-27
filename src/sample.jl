@@ -34,6 +34,9 @@ the prior). Pass `chain_type=nothing` to get AdvancedHMC's raw
 `Vector{AdvancedHMC.Transition}` instead — the unconstrained θ vectors, without
 the constrained-space mapping.
 
+`progress` shows a live progress meter, defaulting to
+[`default_progress()`](@ref) (on when interactive, off in scripts and CI).
+
 Multiple chains use the standard AbstractMCMC interface with no extra setup:
 
     sample(rng, model, spl, MCMCThreads(), N, nchains; kwargs...)
@@ -49,17 +52,21 @@ function AbstractMCMC.sample(
     adtype=ADTypes.AutoForwardDiff(),
     init=NamedTuple(),
     chain_type=SymChain,
+    progress=default_progress(),
     kwargs...,
 )
     layout, θ0, store0 = build_layout(model; init=init)
     ldf = LogDensityFunction(model, layout, store0, adtype; θ0=θ0)
     ldm = AbstractMCMC.LogDensityModel(ldf)
 
+    # AbstractMCMC's own sampling loop already knows how to draw a progress bar,
+    # so hand `progress` straight to it rather than wrapping a second one around.
     if chain_type === nothing
-        return AbstractMCMC.sample(rng, ldm, spl, N; initial_params=θ0, kwargs...)
+        return AbstractMCMC.sample(rng, ldm, spl, N; initial_params=θ0, progress=progress, kwargs...)
     end
 
-    raw_transitions, state = _pb_sample_transitions(rng, ldm, spl, N; initial_params=θ0, kwargs...)
+    raw_transitions, state = _pb_sample_transitions(rng, ldm, spl, N; initial_params=θ0,
+                                                    progress=progress, kwargs...)
     nt_transitions = [_pb_transition_to_nt(layout, t) for t in raw_transitions]
     return AbstractMCMC.bundle_samples(nt_transitions, ldm, spl, state, chain_type)
 end
@@ -81,6 +88,11 @@ named variables.
 
 Pass `chain_type=nothing` to get the raw `Vector` of per-sweep `NamedTuple`
 transitions instead of a chain.
+
+`progress` shows a live progress meter, defaulting to
+[`default_progress()`](@ref) (on when interactive, off in scripts and CI). It
+spans the whole run — the `discard_initial` burn-in sweeps as well as the `N`
+kept ones — since both cost the same wall-clock time to wait through.
 
 By default a variable whose value is an array (e.g. a latent state matrix) is
 retained per draw as that array. For a large latent that is fine to condition on
@@ -167,54 +179,69 @@ function AbstractMCMC.sample(
     discard_initial::Int=0,
     save_states=nothing,
     chain_type=SymChain,
+    progress=default_progress(),
     kwargs...,
 )
     save = _normalize_save_states(save_states)
     streams = _init_disk_streams(save)
 
-    # First sweep builds the per-block layouts/preps and takes one step; every
-    # later sweep reuses them. We keep `N` sweeps after discarding the first
-    # `discard_initial` as burn-in.
-    t, state = AbstractMCMC.step(rng, model, spl; init=init, adtype=adtype, n_adapts=n_adapts, kwargs...)
-    # A `save_states` name that isn't a real model variable is almost certainly a
-    # typo — catch it here (once, cheaply) rather than silently doing nothing.
-    for name in keys(save)
-        haskey(t, name) || throw(ArgumentError(
-            "`save_states` names variable `$name`, which is not a variable of this model " *
-            "(its variables are: $(join(keys(t), ", ")))"))
-    end
-    for _ in 1:discard_initial
-        t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
-    end
+    # The meter spans burn-in AND kept sweeps: `discard_initial` sweeps cost the
+    # same as kept ones, so a bar covering only `N` would sit at 0% through the
+    # entire warm-up. `done` counts sweeps actually taken, the first one included.
+    total_sweeps = 1 + discard_initial + (discard_initial == 0 ? N - 1 : N)
+    transitions, state = _run_with_progress(progress, "Sampling", total_sweeps) do p
+        done = 0
 
-    # Which of the sweep's variables survive into the chain, as a compile-time
-    # constant tuple (the sweep always returns the same key set, so this is fixed
-    # for the whole run). Everything else is either dropped (`:buffer`) or
-    # streamed to disk — in both cases it must NOT be retained here, which is the
-    # whole point: retaining a 3 MB `X` for 5000 sweeps is what exhausts memory.
-    retained = Val(_retained_keys(t, save))
+        # First sweep builds the per-block layouts/preps and takes one step; every
+        # later sweep reuses them. We keep `N` sweeps after discarding the first
+        # `discard_initial` as burn-in.
+        t, state = AbstractMCMC.step(rng, model, spl; init=init, adtype=adtype, n_adapts=n_adapts, kwargs...)
+        _progress_update!(p, done += 1)
+        # A `save_states` name that isn't a real model variable is almost certainly a
+        # typo — catch it here (once, cheaply) rather than silently doing nothing.
+        for name in keys(save)
+            haskey(t, name) || throw(ArgumentError(
+                "`save_states` names variable `$name`, which is not a variable of this model " *
+                "(its variables are: $(join(keys(t), ", ")))"))
+        end
+        for _ in 1:discard_initial
+            t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
+            _progress_update!(p, done += 1)
+        end
 
-    kept = _select_names(t, retained)
-    transitions = Vector{typeof(kept)}(undef, N)
-    # When there is no burn-in, the very first sweep (`t` above) is the first
-    # kept draw; otherwise `t` currently holds the last discarded sweep and the
-    # first kept draw comes from the next step.
-    if discard_initial == 0
-        transitions[1] = kept
-        _record_disk!(streams, t)
-        for i in 2:N
-            t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
-            transitions[i] = _select_names(t, retained)
+        # Which of the sweep's variables survive into the chain, as a compile-time
+        # constant tuple (the sweep always returns the same key set, so this is fixed
+        # for the whole run). Everything else is either dropped (`:buffer`) or
+        # streamed to disk — in both cases it must NOT be retained here, which is the
+        # whole point: retaining a 3 MB `X` for 5000 sweeps is what exhausts memory.
+        retained = Val(_retained_keys(t, save))
+
+        kept = _select_names(t, retained)
+        transitions = Vector{typeof(kept)}(undef, N)
+        # When there is no burn-in, the very first sweep (`t` above) is the first
+        # kept draw; otherwise `t` currently holds the last discarded sweep and the
+        # first kept draw comes from the next step.
+        if discard_initial == 0
+            transitions[1] = kept
             _record_disk!(streams, t)
+            for i in 2:N
+                t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
+                transitions[i] = _select_names(t, retained)
+                _record_disk!(streams, t)
+                _progress_update!(p, done += 1)
+            end
+        else
+            for i in 1:N
+                t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
+                transitions[i] = _select_names(t, retained)
+                _record_disk!(streams, t)
+                _progress_update!(p, done += 1)
+            end
         end
-    else
-        for i in 1:N
-            t, state = AbstractMCMC.step(rng, model, spl, state; n_adapts=n_adapts, kwargs...)
-            transitions[i] = _select_names(t, retained)
-            _record_disk!(streams, t)
-        end
+        _flush_disk!(streams)  # trailing partial buffers
+
+        return transitions, state
     end
-    _flush_disk!(streams)  # trailing partial buffers
 
     chain_type === nothing && return transitions
     # A Gibbs transition is already a constrained-parameter NamedTuple, so
@@ -236,14 +263,20 @@ end
 # transitions ourselves and convert each to `(constrained_params, stats)` before
 # handing off to `bundle_samples`, so FlexiChains' generic `NamedTuple` path does
 # the chain-building rather than a bespoke `FlexiChain{Symbol}` method here.
-function _pb_sample_transitions(rng, ldm, spl, N; initial_params, kwargs...)
+function _pb_sample_transitions(rng, ldm, spl, N; initial_params, progress=false, kwargs...)
     transitions = Vector{Any}(undef, N)
-    sample1, state = AbstractMCMC.step(rng, ldm, spl; initial_params=initial_params, kwargs...)
-    transitions[1] = sample1
-    for i in 2:N
-        transitions[i], state = AbstractMCMC.step(rng, ldm, spl, state; kwargs...)
+    # `progress` is consumed here, NOT forwarded: `AbstractMCMC.step` takes no
+    # such keyword, and AdvancedHMC would pass it on into its own internals.
+    _run_with_progress(progress, "Sampling", N) do p
+        sample1, state = AbstractMCMC.step(rng, ldm, spl; initial_params=initial_params, kwargs...)
+        transitions[1] = sample1
+        _progress_update!(p, 1)
+        for i in 2:N
+            transitions[i], state = AbstractMCMC.step(rng, ldm, spl, state; kwargs...)
+            _progress_update!(p, i)
+        end
+        return transitions, state
     end
-    return transitions, state
 end
 
 # Keeps the constrained-parameter NamedTuple and AdvancedHMC's per-transition
