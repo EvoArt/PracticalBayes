@@ -103,6 +103,11 @@ struct GLMPlan
     response::Symbol
     link::Symbol
     dotted::Bool          # `y .~ link.(eta)` vs `y ~ arraydist(link.(eta))`
+    # For a Normal/MvNormal likelihood, the parameter supplying the
+    # observation scale (`sigma` in `MvNormal(pred, sigma^2 * I)`), or
+    # `nothing` when the scale is a constant. It needs its own likelihood-side
+    # derivative, unlike the predictor parameters, so it is tracked separately.
+    scale::Union{Symbol,Nothing}
 end
 
 # --- the whitelists -------------------------------------------------------
@@ -161,6 +166,7 @@ function recognize_glm(body, argnames_in)
     etas = Dict{Symbol,Vector{LinTerm}}()   # name => decomposition, for `eta = ...`
     response = nothing; link = nothing; eta_var = nothing; dotted = false
     eta_terms = LinTerm[]
+    scale = nothing
 
     for stmt in _gm_statements(body)
         # skip line-number nodes and bare literals
@@ -175,8 +181,10 @@ function recognize_glm(body, argnames_in)
                 response !== nothing && return nothing   # two likelihoods: reject
                 lk, ev, tms = _gm_match_link(rhs, isdot, etas, params, argnames)
                 lk === nothing && return nothing
+                sc = _gm_scale_param(rhs, params)
+                sc === :__reject__ && return nothing
                 link = lk; eta_var = ev; eta_terms = tms
-                response = lhs; dotted = isdot
+                response = lhs; dotted = isdot; scale = sc
                 continue
             end
 
@@ -221,7 +229,7 @@ function recognize_glm(body, argnames_in)
     # The predictor must actually depend on at least one parameter, otherwise
     # there is no gradient to compute and this is not a model we should claim.
     any(t -> t.param !== nothing, eta_terms) || return nothing
-    return GLMPlan(priors, eta_var, eta_terms, response, link, dotted)
+    return GLMPlan(priors, eta_var, eta_terms, response, link, dotted, scale)
 end
 
 # --- statement flattening --------------------------------------------------
@@ -355,6 +363,66 @@ function _gm_match_link(rhs, isdot, etas, params, argnames)
     end
 
     return fail
+end
+
+"""
+    _gm_scale_param(rhs, params) -> Union{Symbol,Nothing}
+
+The parameter supplying the observation scale in a Normal/MvNormal observe,
+e.g. `sigma` in `MvNormal(eta, sigma^2 * I)`. Returns `nothing` when the scale
+argument mentions no parameter (a fixed constant).
+
+Rejects (by returning `:__reject__`, which the caller turns into an overall
+reject) any scale expression mentioning MORE than one parameter, or one
+parameter in a form other than `sigma`/`sigma^2`: those have different
+derivatives and must not be silently treated as the simple case.
+"""
+function _gm_scale_param(rhs, params)
+    (rhs isa Expr && rhs.head == :call && rhs.args[1] in (:MvNormal, :Normal) &&
+     length(rhs.args) >= 3) || return nothing
+    sc = rhs.args[3]
+    found = Symbol[]
+    _gm_collect_params!(found, sc, params)
+    isempty(found) && return nothing
+    length(found) == 1 || return :__reject__
+    s = found[1]
+    # accept only `s`, `s^2`, `s^2 * I`, `s^2 .* I` (and the `I *`/`I .*` order)
+    _gm_scale_shape_ok(sc, s) || return :__reject__
+    return s
+end
+
+function _gm_collect_params!(out, ex, params)
+    if ex isa Symbol
+        ex in params && !(ex in out) && push!(out, ex)
+        return out
+    end
+    ex isa Expr || return out
+    for a in ex.args; _gm_collect_params!(out, a, params); end
+    return out
+end
+
+function _gm_scale_shape_ok(ex, s)
+    ex === s && return true
+    if ex isa Expr && ex.head == :call
+        f = ex.args[1]
+        if f === :^ && length(ex.args) == 3 && ex.args[2] === s && ex.args[3] == 2
+            return true
+        end
+        if f in (:*, :.*) && length(ex.args) == 3
+            a, b = ex.args[2], ex.args[3]
+            (a === :I && _gm_scale_shape_ok(b, s)) && return true
+            (b === :I && _gm_scale_shape_ok(a, s)) && return true
+        end
+    end
+    if ex isa Expr && ex.head == :. && length(ex.args) == 2
+        tup = ex.args[2]
+        if ex.args[1] === :* && tup isa Expr && tup.head == :tuple && length(tup.args) == 2
+            a, b = tup.args
+            (a === :I && _gm_scale_shape_ok(b, s)) && return true
+            (b === :I && _gm_scale_shape_ok(a, s)) && return true
+        end
+    end
+    return false
 end
 
 # --- linear-predictor decomposition ---------------------------------------

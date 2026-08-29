@@ -29,6 +29,7 @@ include("compiler.jl")
 # package calls `recognize_glm` and it generates no code. Wiring it into
 # `@model` is a later, separate step gated on a runtime gradient check.
 include("gradmode_recognize.jl")
+include("gradmode_codegen.jl")
 include("logdensity.jl")
 include("optimize.jl")
 include("latent.jl")
