@@ -144,4 +144,54 @@ end) == :accept
 
 end  # must accept
 
+@testset "MvNormal prior variance (regression: silently wrong gradient)" begin
+    # `MvNormal(zeros(p), 25.0*I)` was ACCEPTED and then differentiated as if
+    # the prior were standard normal — the gradient was wrong by a factor of
+    # the variance. Caught by check_gradmode, not by recognition, which is
+    # exactly what the verification harness is for. All isotropic forms below
+    # must be recognized AND carry their variance through to codegen.
+    for cov in (:(I), :(25.0 * I), :(I * 25.0), :(4.0), :(pT(25.0) * I))
+        @test _recog([:y, :X, :pT], quote
+            beta ~ MvNormal(zeros(2), $cov)
+            y ~ arraydist(BernoulliLogit.(X * beta))
+        end) == :accept
+    end
+    # a covariance shape codegen cannot interpret must be REJECTED, not
+    # silently treated as unit scale
+    @test _recog([:y, :X, :S], quote
+        beta ~ MvNormal(zeros(2), S)
+        y ~ arraydist(BernoulliLogit.(X * beta))
+    end) == :reject
+end
+
+@testset "cloglog link and @addlogprob! observe form" begin
+    # the jolly island `seic_cloglog` shape, both spellings
+    @test _recog([:y, :Xmat], quote
+        beta ~ MvNormal(zeros(2), I)
+        eta = Xmat * beta
+        y ~ arraydist(BernoulliCLogLog.(eta))
+    end) == :accept
+
+    @test _recog([:y, :Xmat], quote
+        beta ~ MvNormal(zeros(2), I)
+        eta = Xmat * beta
+        @addlogprob! sum(logpdf.(BernoulliCLogLog.(eta), y))
+    end) == :accept
+
+    # an @addlogprob! that is NOT the recognized vectorised-sum observe carries
+    # an arbitrary log-density term and must reject the whole model
+    @test _recog([:y, :Xmat], quote
+        beta ~ MvNormal(zeros(2), I)
+        @addlogprob! -0.5 * sum(abs2, beta)
+        y ~ arraydist(BernoulliLogit.(Xmat * beta))
+    end) == :reject
+
+    # a `depends=` annotation implies Gibbs blocking, which GradMode cannot do
+    @test _recog([:y, :Xmat], quote
+        beta ~ MvNormal(zeros(2), I)
+        eta = Xmat * beta
+        @addlogprob! sum(logpdf.(BernoulliCLogLog.(eta), y)) depends=(beta,)
+    end) == :reject
+end
+
 end  # gradmode recognizer
