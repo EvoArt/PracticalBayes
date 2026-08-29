@@ -11,6 +11,7 @@ using PracticalBayes
     include("gibbs.jl")
     include("check_depends.jl")
     include("gradmode_recognize.jl")
+    include("gradmode_wiring.jl")
     include("sample.jl")
     include("predict.jl")
     include("turing_comparison.jl")

@@ -44,6 +44,40 @@
 # =============================================================================
 
 """
+    GradMode()
+
+Opt-in AD type selecting the closed-form analytical gradient for models
+`recognize_glm` accepts. Pass it where you would pass an `ADTypes` backend:
+
+    ldf = LogDensityFunction(model, layout, store, GradMode(); θ0=θ0)
+
+**Opt-in on purpose — it is NOT always faster.** Measured against the fastest
+general backend per cell on logistic regression (see the factorial sweep in
+the project notes): ~4.9-5.7x at N=5000-20000 with P=50-200, but **0.48-0.96x
+(i.e. SLOWER) at N<=1000 with P<=10**, where ForwardDiff's forward-mode cost
+is proportional to a tiny P and this path's fixed per-call overhead dominates.
+Use it for large-N, moderate-to-large-P models; use ForwardDiff for small ones.
+
+If the model is not recognized, construction throws with the reason rather
+than silently falling back — an opt-in request for a fast path should tell you
+when it cannot be honoured, otherwise you would think you had it and not.
+
+Correctness is not assumed: verify with `check_gradmode` before relying on it
+for real inference.
+"""
+struct GradMode end
+
+"""
+    gradmode_plan(f) -> Union{GLMPlan,Nothing}
+
+The `GLMPlan` recognized for a model evaluator at `@model` expansion time, or
+`nothing` when the model was not recognized. The `@model` macro emits a method
+of this for every model it compiles; this fallback covers evaluators built by
+other means.
+"""
+gradmode_plan(::Any) = nothing
+
+"""
     GradModeWorkspace(N, dim)
 
 Pre-allocated scratch for `gradmode_value_and_gradient!`: `eta` and the
@@ -56,6 +90,19 @@ struct GradModeWorkspace{T}
     w::Vector{T}
 end
 GradModeWorkspace{T}(N::Int) where {T} = GradModeWorkspace{T}(zeros(T, N), zeros(T, N))
+
+"""
+    GradModePrep(plan, ws)
+
+What `LogDensityFunction` stores in its `prep` slot for a `GradMode()` backend,
+in place of a `DifferentiationInterface` tape/config. Holds the recognized plan
+and the reusable scratch buffers, so the hot path allocates only the returned
+gradient vector.
+"""
+struct GradModePrep{P<:GLMPlan,W}
+    plan::P
+    ws::W
+end
 
 """
     gradmode_value_and_gradient!(plan, layout, args, theta, g, ws) -> value

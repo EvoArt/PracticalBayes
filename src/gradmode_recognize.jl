@@ -232,6 +232,33 @@ function recognize_glm(body, argnames_in)
     return GLMPlan(priors, eta_var, eta_terms, response, link, dotted, scale)
 end
 
+# --- qualified-name handling -----------------------------------------------
+
+"""
+    _gm_head(ex) -> Union{Symbol,Nothing}
+
+The bare name of a callee, seeing through module qualification:
+`Distributions.MvNormal` -> `:MvNormal`, `MvNormal` -> `:MvNormal`.
+
+Necessary because real models qualify almost everything
+(`Distributions.MvNormal`, `PracticalBayes.arraydist`), and matching only bare
+symbols recognizes essentially nothing outside a toy test.
+
+Only the FINAL component is used. That is safe here because the name is then
+checked against a whitelist and the derivative is verified against general AD
+by `check_gradmode` — a same-named function from an unexpected module would be
+caught there, not silently trusted.
+"""
+function _gm_head(ex)
+    ex isa Symbol && return ex
+    if ex isa Expr && ex.head == :. && length(ex.args) == 2
+        q = ex.args[2]
+        q isa QuoteNode && q.value isa Symbol && return q.value
+        q isa Symbol && return q
+    end
+    return nothing
+end
+
 # --- statement flattening --------------------------------------------------
 
 # Flatten a `begin ... end` block into its statements. A body that is not a
@@ -278,8 +305,8 @@ end
 function _gm_match_prior(name, rhs, params)
     rhs isa Expr || return nothing
     rhs.head == :call || return nothing
-    d = rhs.args[1]
-    d isa Symbol || return nothing            # qualified `Distributions.Normal`
+    d = _gm_head(rhs.args[1])                 # sees through `Distributions.Normal`
+    d === nothing && return nothing
 
     if d in GRADMODE_PRIOR_WRAPPERS
         length(rhs.args) >= 2 || return nothing
@@ -339,14 +366,14 @@ function _gm_match_link(rhs, isdot, etas, params, argnames)
     end
 
     # unwrap `arraydist(...)`
-    if rhs.head == :call && rhs.args[1] === :arraydist && length(rhs.args) == 2
+    if rhs.head == :call && _gm_head(rhs.args[1]) === :arraydist && length(rhs.args) == 2
         return _gm_match_link(rhs.args[2], true, etas, params, argnames)
     end
 
     # `Link.(pred)` — a dotted call parses as Expr(:., :Link, :(tuple(pred)))
     if rhs.head == :. && length(rhs.args) == 2
-        f = rhs.args[1]
-        f isa Symbol || return fail
+        f = _gm_head(rhs.args[1])
+        f === nothing && return fail
         f in GRADMODE_LINKS || return fail
         tup = rhs.args[2]
         (tup isa Expr && tup.head == :tuple && length(tup.args) == 1) || return fail
@@ -356,10 +383,10 @@ function _gm_match_link(rhs, isdot, etas, params, argnames)
     end
 
     # `MvNormal(pred, sigma^2*I)` / `Normal(pred, sigma)` — predictor is the mean.
-    if rhs.head == :call && rhs.args[1] in (:MvNormal, :Normal) && length(rhs.args) >= 2
+    if rhs.head == :call && _gm_head(rhs.args[1]) in (:MvNormal, :Normal) && length(rhs.args) >= 2
         ev, tms = pred(rhs.args[2])
         tms === nothing && return fail
-        return (rhs.args[1], ev, tms)
+        return (_gm_head(rhs.args[1]), ev, tms)
     end
 
     return fail
@@ -378,7 +405,7 @@ parameter in a form other than `sigma`/`sigma^2`: those have different
 derivatives and must not be silently treated as the simple case.
 """
 function _gm_scale_param(rhs, params)
-    (rhs isa Expr && rhs.head == :call && rhs.args[1] in (:MvNormal, :Normal) &&
+    (rhs isa Expr && rhs.head == :call && _gm_head(rhs.args[1]) in (:MvNormal, :Normal) &&
      length(rhs.args) >= 3) || return nothing
     sc = rhs.args[3]
     found = Symbol[]
@@ -410,16 +437,16 @@ function _gm_scale_shape_ok(ex, s)
         end
         if f in (:*, :.*) && length(ex.args) == 3
             a, b = ex.args[2], ex.args[3]
-            (a === :I && _gm_scale_shape_ok(b, s)) && return true
-            (b === :I && _gm_scale_shape_ok(a, s)) && return true
+            (_gm_head(a) === :I && _gm_scale_shape_ok(b, s)) && return true
+            (_gm_head(b) === :I && _gm_scale_shape_ok(a, s)) && return true
         end
     end
     if ex isa Expr && ex.head == :. && length(ex.args) == 2
         tup = ex.args[2]
         if ex.args[1] === :* && tup isa Expr && tup.head == :tuple && length(tup.args) == 2
             a, b = tup.args
-            (a === :I && _gm_scale_shape_ok(b, s)) && return true
-            (b === :I && _gm_scale_shape_ok(a, s)) && return true
+            (_gm_head(a) === :I && _gm_scale_shape_ok(b, s)) && return true
+            (_gm_head(b) === :I && _gm_scale_shape_ok(a, s)) && return true
         end
     end
     return false
@@ -455,7 +482,7 @@ function _gm_linear_terms(ex, params, argnames, etas)
     ex isa Expr || return nothing
 
     # `view(a, idx)` — the hierarchical group-effect gather
-    if ex.head == :call && ex.args[1] === :view && length(ex.args) == 3
+    if ex.head == :call && _gm_head(ex.args[1]) === :view && length(ex.args) == 3
         a, idx = ex.args[2], ex.args[3]
         (a isa Symbol && idx isa Symbol) || return nothing
         (a in params && idx in argnames) || return nothing

@@ -64,6 +64,23 @@ function LogDensityFunction(
         # that never needs a gradient. `prep` is `nothing` and never touched.
         return LogDensityFunction(model, layout, store, nothing, nothing, reject_errors)
     end
+    if adtype isa GradMode
+        # Opt-in closed-form gradient (gradmode_codegen.jl). `prep` holds the
+        # recognized plan plus its scratch buffers instead of an AD tape.
+        plan = gradmode_plan(model.f)
+        plan === nothing && throw(ArgumentError(
+            "GradMode() was requested but this model was not recognized as a GLM with a " *
+            "closed-form gradient, so the fast path cannot be used. Use a general AD " *
+            "backend (e.g. AutoForwardDiff()/AutoMooncake()) instead. See " *
+            "`recognize_glm` for the accepted model grammar."))
+        isempty(store) || throw(ArgumentError(
+            "GradMode() does not support a non-empty `store` (Gibbs blocks / latent " *
+            "variables): the closed form is derived for the whole model at once. Use a " *
+            "general AD backend for this block."))
+        N = length(getfield(model.args, plan.response))
+        prep = GradModePrep(plan, GradModeWorkspace{eltype(θ0)}(N))
+        return LogDensityFunction(model, layout, store, adtype, prep, reject_errors)
+    end
     # `DI.prepare_gradient` traces/compiles the AD backend's tape or config
     # ONCE against `θ0`'s type and length; every later `logdensity_and_gradient`
     # call reuses `prep` instead of re-preparing, which matters a lot for
@@ -150,6 +167,26 @@ LogDensityProblems.dimension(f::LogDensityFunction) = f.layout.dim
 # our `logdensity_and_gradient` method directly instead of re-differentiating.
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{<:Any,<:Any,<:Any,AD}}) where {AD}
     return AD === Nothing ? LogDensityProblems.LogDensityOrder{0}() : LogDensityProblems.LogDensityOrder{1}()
+end
+
+# GradMode: the closed-form path. Same contract as the DI path below (returns
+# `(value, gradient)`), and the same `reject_errors` semantics, so a sampler
+# cannot tell the difference apart from speed.
+function LogDensityProblems.logdensity_and_gradient(
+    f::LogDensityFunction{M,L,S,GradMode,P}, θ::AbstractVector
+) where {M<:Model,L<:Layout,S<:NamedTuple,P}
+    g = similar(θ)
+    if f.reject_errors
+        try
+            v = gradmode_value_and_gradient!(f.prep.plan, f.layout, f.model.args, θ, g, f.prep.ws)
+            return v, g
+        catch e
+            e isa Union{InterruptException,OutOfMemoryError} && rethrow()
+            return _reject_value(θ), zeros(eltype(θ), length(θ))
+        end
+    end
+    v = gradmode_value_and_gradient!(f.prep.plan, f.layout, f.model.args, θ, g, f.prep.ws)
+    return v, g
 end
 
 function LogDensityProblems.logdensity_and_gradient(f::LogDensityFunction, θ::AbstractVector)

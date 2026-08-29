@@ -43,11 +43,12 @@ include("progress.jl")
 include("sample.jl")
 include("predict.jl")
 
-export @model, Model, condition, decondition, @addlogprob!
+export @model, @static_model, Model, condition, decondition, @addlogprob!
 export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction
+export GradMode, check_gradmode
 export AbstractEvalMode, TraceMode, EvalMode, PriorMode, FixedMode, PointwiseMode
 export evaluate, paramtype
 export maximum_a_posteriori, maximum_likelihood, laplace_approximation

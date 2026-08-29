@@ -8,13 +8,26 @@ using Bijectors: with_logabsdet_jacobian
 Metadata captured once during `TraceMode` for a single top-level model
 variable. Never touched on the hot (`EvalMode`) path.
 """
-struct SiteRecord
+struct SiteRecord{D,V}
     name::Symbol
-    dist_exemplar::Any  # a representative Distribution instance for this site
+    dist_exemplar::D    # a representative Distribution instance for this site
     linked_len::Int     # length of the unconstrained ("linked") representation
     role::Symbol        # :observed, :param, or :latent
-    init_val::Any       # constrained-space initial value
+    init_val::V         # constrained-space initial value
 end
+
+# `D` and `V` are parameters rather than `Any` so that a record's field reads
+# resolve statically. With `dist_exemplar::Any`, `to_linked_vec(rec.dist_exemplar)`
+# is an unresolved call under `juliac --trim`, and because `Any` can hold an
+# `Expr` the compiler must also retain Julia's entire recursive expression
+# printer: on a two-site model that single field produced 204 verifier errors,
+# 114 of them inside `show`.
+#
+# Records are collected into a `Vector{SiteRecord}` during discovery (which is
+# dynamic by design — see `build_layout`), so they are still boxed there. Only
+# `build_layout(...; static=true)` freezes them into a `Tuple`, where the
+# concrete parameters survive.
+const AnySiteRecord = SiteRecord{<:Any,<:Any}
 
 abstract type AbstractSlot end
 
@@ -60,7 +73,7 @@ for variables belonging to other blocks in a Gibbs sweep. Values behind a
 struct ValueSlot <: AbstractSlot end
 
 """
-    Layout{S<:NamedTuple}
+    Layout{S<:NamedTuple,M}
 
 `slots`: NamedTuple mapping variable name -> `AbstractSlot`, isbits so that
 `getproperty(layout.slots, name)` is fully inferred and the assume-path branch
@@ -77,12 +90,30 @@ reporting-level flag: `EvalMode`/`tilde.jl` never look at it, so an untracked
 site's gradient contribution and posterior correlation with everything else
 is completely unaffected.
 """
-struct Layout{S<:NamedTuple}
+struct Layout{S<:NamedTuple,M}
     slots::S
     dim::Int
-    meta::Vector{SiteRecord}
+    meta::M
     untracked::Set{Symbol}
 end
+
+# `meta` is `Vector{SiteRecord}` by default and a `Tuple` of `SiteRecord`s under
+# `build_layout(...; static=true)`.
+#
+# The difference matters only for `juliac --trim`. `SiteRecord.dist_exemplar` is
+# `::Any`, so `to_linked_vec(rec.dist_exemplar)` is an unresolved call: trim
+# cannot see which method it lands in, and because `Any` could hold an `Expr` it
+# also has to retain Julia's whole recursive expression printer. On a two-site
+# model that one field produced 204 verifier errors, 114 of them inside `show`.
+#
+# A `Tuple` keeps each record's concrete type, so the field reads resolve. It is
+# not the default because it costs roughly 5 ms of compile time per record: a
+# model whose indexed family is written as a loop (`for i in 1:400; x[i] ~ ...`)
+# keeps one record per element and would pay ~2 s. Written as an array
+# distribution the same model is three records and pays nothing. Measured:
+# distinct distribution TYPES cost nothing (2 to 30 types is if anything cheaper
+# than the Vector); record COUNT is what costs.
+const VectorLayout{S} = Layout{S,<:Vector{<:SiteRecord}}
 
 """
     build_layout(model; flat=nothing, values=(), untracked=(), rng=Random.default_rng(), init=NamedTuple()) -> (layout, θ0, store0)
@@ -134,6 +165,7 @@ function build_layout(
     rng=Random.default_rng(),
     init=NamedTuple(),
     T::Type{<:Real}=Float64,
+    static::Bool=prefers_static_layout(model.f),
 )
     # Step 1: run the model exactly once under TraceMode. Every tilde method
     # specialized on TraceMode (tilde.jl) pushes a SiteRecord as it goes, so
@@ -260,7 +292,11 @@ function build_layout(
             "`untracked` name `$name` is not one of this layout's flat-vector sites: $(seen_order)",
         ))
     end
-    layout = Layout(slots, offset, records, untracked_names)
+    # `static=true` freezes the records into a Tuple so their concrete types
+    # survive into the compiled code. See the note on `Layout` above for why
+    # this is opt-in rather than the default.
+    meta = static ? Tuple(records) : records
+    layout = Layout(slots, offset, meta, untracked_names)
     return layout, θ0, store0
 end
 
