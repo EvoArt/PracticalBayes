@@ -538,7 +538,7 @@ end
 @inline _gm_scalar(v) = v isa AbstractArray ? v[1] : v
 
 # The isotropic variance of an MvNormal prior site (1.0 when unspecified).
-function _gm_mvnormal_var_of(ps::PriorSite)
+function _gm_mvnormal_var_of(ps::PriorSite)::Float64
     length(ps.args) >= 2 || return 1.0
     v = _gm_mvnormal_var(ps.args[2])
     v === nothing && error("gradmode: unrecognized MvNormal covariance for $(ps.name)")
@@ -557,7 +557,18 @@ end
 # Returns `nothing` when the argument is present but not a recognizable
 # constant, so callers can distinguish "absent, use default" from "present but
 # not understood" — the latter must reject rather than guess.
-function _gm_num(args, i, default)
+# The `::Float64` return annotation is load-bearing, not decoration.
+# `PriorSite.args` is a `Vector{Any}` of unevaluated AST, so `_gm_const`'s walk
+# below necessarily infers `Any` — and without this annotation that `Any`
+# propagates into every arithmetic operation downstream (broadcasts, `sum`,
+# `literal_pow`, `log`), leaving them as unresolved dynamic calls. This is the
+# right place to put the boundary: it is exactly where AST walking ends and
+# floating-point arithmetic begins, so annotating here concretises all the
+# callers while the dynamic walk beneath stays dynamic.
+#
+# Measured effect (reported by the trim work on a gm_normal GLM): `_gm_num`
+# accounted for 200 of 282 `--trim=safe` verifier errors, always as `::Any`.
+function _gm_num(args, i, default)::Float64
     length(args) >= i || return default
     v = _gm_const(args[i])
     v === nothing && error("gradmode: non-constant prior argument $(args[i])")
@@ -565,7 +576,7 @@ function _gm_num(args, i, default)
 end
 
 # A compile-time numeric constant, seeing through casts and zero/one.
-function _gm_const(a)
+function _gm_const(a)::Union{Float64,Nothing}
     a isa Number && return float(a)
     if a isa Expr && a.head == :call && length(a.args) == 2
         f = _gm_head(a.args[1])
