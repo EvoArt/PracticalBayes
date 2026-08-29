@@ -152,17 +152,28 @@ mutable struct _Rng
     spare::Float64
 end
 
+# One SplitMix64 step: state in, (next state, output) out.
+#
+# Written as a plain function rather than a closure over a mutated `z`
+# deliberately. A closure that reassigns a captured variable makes Julia box it
+# (`Core.Box`), which erases its type -- under `juliac --trim` that single box
+# produced 20 verifier errors in this constructor alone.
+@inline function _splitmix64(z::UInt64)
+    z += 0x9e3779b97f4a7c15
+    y = z
+    y = (y ⊻ (y >> 30)) * 0xbf58476d1ce4e5b9
+    y = (y ⊻ (y >> 27)) * 0x94d049bb133111eb
+    return z, y ⊻ (y >> 31)
+end
+
 function _Rng(seed::Int)
-    # SplitMix64 to expand the seed into the four words xoshiro needs.
-    z = UInt64(seed) + 0x9e3779b97f4a7c15
-    nxt = () -> begin
-        z += 0x9e3779b97f4a7c15
-        y = z
-        y = (y ⊻ (y >> 30)) * 0xbf58476d1ce4e5b9
-        y = (y ⊻ (y >> 27)) * 0x94d049bb133111eb
-        return y ⊻ (y >> 31)
-    end
-    return _Rng(nxt(), nxt(), nxt(), nxt(), false, 0.0)
+    # SplitMix64 expands the seed into the four words xoshiro256++ needs.
+    z = UInt64(seed)
+    z, a = _splitmix64(z)
+    z, b = _splitmix64(z)
+    z, c = _splitmix64(z)
+    z, d = _splitmix64(z)
+    return _Rng(a, b, c, d, false, 0.0)
 end
 
 @inline _rotl(x::UInt64, k::Int) = (x << k) | (x >> (64 - k))
