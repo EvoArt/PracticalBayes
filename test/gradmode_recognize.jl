@@ -38,17 +38,29 @@ end) == :reject
     y ~ MvNormal(eta, 1.0)
 end) == :reject
 
-# A centered hierarchical prior: d/d(mu_a) has chain-rule terms through a.
-@test _recog([:y, :grp], quote
+# Hierarchical LOCATION in a shape whose chain factor differs: `10mu_a` is a
+# scaled hyper-mean, so d/d(mu_a) picks up a factor of 10. Only the bare
+# `mu_a` / `fill(mu_a, n)` forms are implemented; anything else must reject
+# rather than silently use the unscaled derivative.
+@test _recog([:y, :grp, :J], quote
     mu_a ~ Normal(0, 5)
-    a ~ Normal(mu_a, 1.0)
+    a ~ MvNormal(fill(10mu_a, J), I)
     y ~ MvNormal(a[grp], 1.0)
 end) == :reject
 
-# sigma_a as a prior arg is the same problem.
+# A prior argument that is a non-constant EXPRESSION of a parameter (not a
+# bare hyperparameter) is outside the implemented forms.
 @test _recog([:y, :x], quote
     s ~ Exponential(1.0)
-    beta ~ Normal(0, s)
+    beta ~ Normal(0, exp(s))
+    y ~ MvNormal(beta .* x, 1.0)
+end) == :reject
+
+# A prior constant codegen cannot parse must reject, NOT fall back to a
+# default. `Normal(0, sd_from_data)` with a symbolic sd previously read as
+# sd=1 — a wrong gradient, not a slow one.
+@test _recog([:y, :x, :sd_data], quote
+    beta ~ Normal(0, sd_data)
     y ~ MvNormal(beta .* x, 1.0)
 end) == :reject
 
@@ -143,6 +155,51 @@ end) == :accept
 end) == :accept
 
 end  # must accept
+
+@testset "centered hierarchical priors" begin
+    # The dominant reject theme (16 of 37 corpus models). A prior whose
+    # location and/or scale is itself a parameter: the gradient has extra
+    # chain-rule terms into those hyperparameters, and omitting them biases
+    # the hyperparameter posterior while alpha's still looks fine.
+    @test _recog([:y, :grp, :J], quote
+        mu_a ~ Normal(0, 5)
+        sigma_a ~ Exponential(1.0)
+        a ~ MvNormal(fill(mu_a, J), sigma_a^2 * I)
+        y ~ MvNormal(a[grp], 1.0)
+    end) == :accept
+
+    # location only
+    @test _recog([:y, :grp, :J], quote
+        mu_a ~ Normal(0, 5)
+        a ~ MvNormal(fill(mu_a, J), I)
+        y ~ MvNormal(a[grp], 1.0)
+    end) == :accept
+
+    # scale only (zero-mean random effect)
+    @test _recog([:y, :grp, :G], quote
+        sigma_a ~ Exponential(1.0)
+        a ~ MvNormal(fill(0.0, G), sigma_a^2 * I)
+        y ~ arraydist(BernoulliLogit.(a[grp]))
+    end) == :accept
+
+    # scalar Normal via filldist — the hyperparameters must survive the
+    # wrapper. They were previously DROPPED when the wrapper rebuilt the
+    # PriorSite, so this was accepted as a constant-hyperparameter prior and
+    # silently differentiated without the hyper terms.
+    @test _recog([:y, :grp, :G], quote
+        mu_a ~ Normal(0, 5)
+        sigma_a ~ Exponential(1.0)
+        a ~ filldist(Normal(mu_a, sigma_a), G)
+        y ~ arraydist(BernoulliLogit.(a[grp]))
+    end) == :accept
+
+    # UniformScaling spelling (seeds_centered / seeds_stanified shape)
+    @test _recog([:y, :grp, :G], quote
+        sigma ~ Exponential(1.0)
+        a ~ MvNormal(fill(0.0, G), UniformScaling(sigma^2))
+        y ~ arraydist(BernoulliLogit.(a[grp]))
+    end) == :accept
+end
 
 @testset "MvNormal prior variance (regression: silently wrong gradient)" begin
     # `MvNormal(zeros(p), 25.0*I)` was ACCEPTED and then differentiated as if

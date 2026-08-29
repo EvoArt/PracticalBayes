@@ -85,7 +85,20 @@ struct PriorSite
     name::Symbol
     dist::Symbol
     args::Vector{Any}
+    # HIERARCHICAL (centered) priors: when the location and/or scale argument
+    # is itself an earlier parameter — `alpha ~ MvNormal(fill(mu_a, J),
+    # sigma_a^2 * I)` — the gradient has extra chain-rule terms flowing back
+    # into those hyperparameters. `hyper_loc`/`hyper_scale` name them (or are
+    # `nothing` for the ordinary constant-hyperparameter case), so codegen
+    # knows to emit those terms. Getting this wrong is silent posterior bias,
+    # not a crash, which is why the recognizer records them explicitly rather
+    # than letting codegen re-derive the shape.
+    hyper_loc::Union{Symbol,Nothing}
+    hyper_scale::Union{Symbol,Nothing}
 end
+
+# convenience for the common non-hierarchical case
+PriorSite(name, dist, args) = PriorSite(name, dist, args, nothing, nothing)
 
 """
     GLMPlan
@@ -346,12 +359,55 @@ function _gm_match_prior(name, rhs, params)
         for a in rhs.args[3:end]
             _gm_param_free(a, params) || return nothing
         end
-        return PriorSite(name, inner.dist, inner.args)
+        # Carry the inner site's hyperparameters through. Rebuilding with the
+        # 3-arg constructor DROPPED them, so `a ~ filldist(Normal(mu_a,
+        # sigma_a), G)` was accepted as an ordinary constant-hyperparameter
+        # prior and silently differentiated without the hyper terms — the
+        # exact silent-bias failure this feature exists to avoid. Caught by
+        # check_gradmode, not by recognition.
+        return PriorSite(name, inner.dist, inner.args, inner.hyper_loc, inner.hyper_scale)
     end
 
     d in GRADMODE_PRIORS || return nothing
-    for a in rhs.args[2:end]
-        _gm_param_free(a, params) || return nothing
+
+    # --- hierarchical (centered) priors ------------------------------------
+    # `alpha ~ Normal(mu_a, sigma_a)` / `MvNormal(fill(mu_a, J), sigma_a^2*I)`.
+    # Accepted ONLY for Normal/MvNormal, and only when the location is either
+    # constant or a bare/`fill`ed scalar parameter, and the scale is either
+    # constant or a scalar parameter in `s`, `s^2`, `s*I`, `s^2*I`, or
+    # `UniformScaling(s^2)` form. Every other shape is rejected: the extra
+    # chain-rule terms differ per shape, and a wrong gradient here biases the
+    # posterior silently.
+    hloc, hscale = nothing, nothing
+    if d === :Normal || d === :MvNormal
+        hloc = _gm_hyper_loc(get(rhs.args, 2, nothing), params)
+        hloc === :__reject__ && return nothing
+        hscale = _gm_hyper_scale(get(rhs.args, 3, nothing), params)
+        hscale === :__reject__ && return nothing
+    end
+
+    # Any REMAINING parameter dependence (beyond the location/scale we just
+    # accounted for) is unhandled and rejects the model.
+    for (i, a) in enumerate(rhs.args[2:end])
+        _gm_param_free(a, params) && continue
+        (i == 1 && hloc !== nothing) && continue
+        (i == 2 && hscale !== nothing) && continue
+        return nothing
+    end
+    # Every argument codegen will read as a CONSTANT must be one it can
+    # actually parse. `Normal(zero(pT), pT(10))` is the normal way this
+    # package's models are written; an unparseable argument previously fell
+    # back to a DEFAULT (sd=1 instead of 10), which is a wrong gradient rather
+    # than a slow one. Reject here instead.
+    if d === :Normal || d === :Cauchy
+        (hloc !== nothing || _gm_const_ok(get(rhs.args, 2, nothing))) || return nothing
+        (hscale !== nothing || _gm_const_ok(get(rhs.args, 3, nothing))) || return nothing
+    elseif d === :Exponential
+        _gm_const_ok(get(rhs.args, 2, nothing)) || return nothing
+    end
+
+    if hloc !== nothing || hscale !== nothing
+        return PriorSite(name, d, collect(rhs.args[2:end]), hloc, hscale)
     end
     # MvNormal's covariance argument: codegen implements ONLY the unit-scale
     # case (`MvNormal(mu, I)`), whose gradient is `-v`. A scaled covariance
@@ -406,6 +462,19 @@ function _gm_cast_literal(ex)
 end
 
 # True when `ex` mentions none of `params` anywhere in its tree.
+# True when an argument is absent (codegen uses its default) or is a constant
+# codegen can actually read. Mirrors `_gm_const` in gradmode_codegen.jl.
+function _gm_const_ok(a)
+    a === nothing && return true
+    a isa Number && return true
+    if a isa Expr && a.head == :call && length(a.args) == 2
+        f = _gm_head(a.args[1])
+        (f === :zero || f === :one) && return true
+        a.args[2] isa Number && return true      # numeric cast, e.g. `pT(10)`
+    end
+    return false
+end
+
 function _gm_param_free(ex, params)
     ex isa Symbol && return !(ex in params)
     ex isa Expr || return true
@@ -469,6 +538,110 @@ function _gm_match_link(rhs, isdot, etas, params, argnames)
     end
 
     return fail
+end
+
+"""
+    _gm_hyper_loc(ex, params) -> Union{Symbol,Nothing,:__reject__}
+
+The parameter supplying a prior's LOCATION, when that location is itself an
+earlier parameter. Accepts a bare `mu` and `fill(mu, n)` (the standard way to
+broadcast a scalar hyper-mean across an MvNormal). Returns `nothing` when the
+location involves no parameter, and `:__reject__` for a parameter-dependent
+location in any other shape — those have different derivatives.
+"""
+function _gm_hyper_loc(ex, params)
+    ex === nothing && return nothing
+    _gm_param_free(ex, params) && return nothing
+    ex isa Symbol && ex in params && return ex
+    # `fill(mu, n)` / `fill(10mu, n)` -- only the bare-symbol case is accepted;
+    # a scaled hyper-mean (`10mu_a`) changes the chain factor, so it rejects.
+    if ex isa Expr && ex.head == :call && _gm_head(ex.args[1]) === :fill &&
+       length(ex.args) == 3
+        m = ex.args[2]
+        m isa Symbol && m in params && return m
+    end
+    return :__reject__
+end
+
+"""
+    _gm_hyper_scale(ex, params) -> Union{Symbol,Nothing,:__reject__}
+
+The parameter supplying a prior's SCALE. Accepts `s`, `s^2`, and those wrapped
+in `* I` / `.* I` / `UniformScaling(...)`.
+
+NOTE the variance-vs-sd distinction is handled in codegen via
+`_gm_scale_is_variance`: `Normal(mu, s)` takes a standard deviation, while
+`MvNormal(mu, s^2*I)` takes a variance. Confusing the two is a silent factor-of
+error in the gradient, so the squaring is detected here and recorded, not
+guessed later.
+"""
+function _gm_hyper_scale(ex, params)
+    ex === nothing && return nothing
+    _gm_param_free(ex, params) && return nothing
+    s = _gm_scale_sym(ex, params)
+    s === nothing && return :__reject__
+    return s
+end
+
+# Innermost parameter symbol of a scale expression, or `nothing` if the shape
+# is not one we implement.
+function _gm_scale_sym(ex, params)
+    ex isa Symbol && ex in params && return ex
+    if ex isa Expr && ex.head == :call
+        f = _gm_head(ex.args[1])
+        if f === :^ && length(ex.args) == 3 && ex.args[3] == 2
+            return _gm_scale_sym(ex.args[2], params)
+        end
+        if f === :UniformScaling && length(ex.args) == 2
+            return _gm_scale_sym(ex.args[2], params)
+        end
+        if f in (:*, :.*) && length(ex.args) == 3
+            a, b = ex.args[2], ex.args[3]
+            _gm_head(a) === :I && return _gm_scale_sym(b, params)
+            _gm_head(b) === :I && return _gm_scale_sym(a, params)
+        end
+    end
+    if ex isa Expr && ex.head == :. && length(ex.args) == 2
+        tup = ex.args[2]
+        if _gm_head(ex.args[1]) === :* && tup isa Expr && tup.head == :tuple &&
+           length(tup.args) == 2
+            a, b = tup.args
+            _gm_head(a) === :I && return _gm_scale_sym(b, params)
+            _gm_head(b) === :I && return _gm_scale_sym(a, params)
+        end
+    end
+    return nothing
+end
+
+"""
+    _gm_scale_is_variance(ex) -> Bool
+
+Whether a scale expression denotes a VARIANCE (`s^2`, `s^2*I`,
+`UniformScaling(s^2)`) rather than a standard deviation (`s`, `s*I`).
+"""
+function _gm_scale_is_variance(ex)
+    ex isa Expr || return false
+    if ex.head == :call
+        f = _gm_head(ex.args[1])
+        f === :^ && length(ex.args) == 3 && ex.args[3] == 2 && return true
+        f === :UniformScaling && length(ex.args) == 2 &&
+            return _gm_scale_is_variance(ex.args[2])
+        if f in (:*, :.*) && length(ex.args) == 3
+            a, b = ex.args[2], ex.args[3]
+            _gm_head(a) === :I && return _gm_scale_is_variance(b)
+            _gm_head(b) === :I && return _gm_scale_is_variance(a)
+        end
+    end
+    if ex.head == :. && length(ex.args) == 2
+        tup = ex.args[2]
+        if _gm_head(ex.args[1]) === :* && tup isa Expr && tup.head == :tuple &&
+           length(tup.args) == 2
+            a, b = tup.args
+            _gm_head(a) === :I && return _gm_scale_is_variance(b)
+            _gm_head(b) === :I && return _gm_scale_is_variance(a)
+        end
+    end
+    return false
 end
 
 """

@@ -126,7 +126,7 @@ function gradmode_value_and_gradient!(plan::GLMPlan, layout, args, theta, g, ws)
     for ps in plan.priors
         v, ljac = _gm_read_param(ps, layout, theta)
         vals[ps.name] = v
-        lp += _gm_prior_logpdf(ps, v) + ljac
+        lp += (_gm_is_hier(ps) ? _gm_hier_logpdf(ps, v, vals) : _gm_prior_logpdf(ps, v)) + ljac
     end
 
     # --- 2. forward: eta ----------------------------------------------------
@@ -149,7 +149,11 @@ function gradmode_value_and_gradient!(plan::GLMPlan, layout, args, theta, g, ws)
 
     # --- 5. prior gradient contributions ------------------------------------
     for ps in plan.priors
-        _gm_prior_grad!(g, ps, vals[ps.name], layout, theta)
+        if _gm_is_hier(ps)
+            _gm_hier_grad!(g, ps, vals[ps.name], vals, layout)
+        else
+            _gm_prior_grad!(g, ps, vals[ps.name], layout, theta)
+        end
     end
 
     # the observation scale (sigma) gets its own likelihood-side derivative
@@ -191,6 +195,9 @@ _gm_flatlike(d::Symbol) = d in (:Flat, :FlatPos, :Uniform)
 
 function logpdf_of(ps::PriorSite, v)
     d = ps.dist
+    # hierarchical (centered): location and/or scale come from `vals`, not the
+    # AST, so this is handled by `_gm_hier_logpdf` with the resolved numbers.
+    _gm_is_hier(ps) && error("gradmode: hierarchical prior needs _gm_hier_logpdf")
     if d === :Normal
         mu, sd = _gm_num(ps.args, 1, 0.0), _gm_num(ps.args, 2, 1.0)
         return sum(@. -0.5*((v-mu)/sd)^2 - log(sd) - 0.5*log(2pi))
@@ -233,6 +240,99 @@ function _gm_prior_grad!(g, ps::PriorSite, v, layout, theta)
     end
     _gm_add_chained!(g, slot.range, dv, v, ps, layout)
     return nothing
+end
+
+# --- hierarchical (centered) priors ----------------------------------------
+#
+# `alpha ~ Normal(mu, sigma)` where mu and/or sigma are themselves parameters.
+# All three gradients are needed, and omitting the hyperparameter ones is the
+# classic silent-bias bug (the posterior for mu/sigma would be wrong while
+# alpha's looked fine):
+#
+#   dL/dalpha = -(alpha - mu)/sigma^2
+#   dL/dmu    =  sum((alpha - mu)/sigma^2)
+#   dL/dsigma =  sum(((alpha-mu)^2/sigma^2 - 1)/sigma)
+#
+# Each hyperparameter's own bijector chain is then applied by
+# `_gm_add_hyper!` (sigma is positive, so d/d(log sigma) = sigma * d/d sigma).
+
+_gm_is_hier(ps::PriorSite) = ps.hyper_loc !== nothing || ps.hyper_scale !== nothing
+
+# Resolved (mu, sigma) for a hierarchical site: from `vals` when the argument
+# is a parameter, otherwise the literal from the AST.
+function _gm_hier_params(ps::PriorSite, vals)
+    mu = ps.hyper_loc === nothing ?
+        (ps.dist === :MvNormal ? 0.0 : _gm_num(ps.args, 1, 0.0)) :
+        _gm_scalar(vals[ps.hyper_loc])
+    if ps.hyper_scale === nothing
+        sd = ps.dist === :MvNormal ? sqrt(_gm_mvnormal_var_of(ps)) : _gm_num(ps.args, 2, 1.0)
+    else
+        s = _gm_scalar(vals[ps.hyper_scale])
+        # What the argument MEANS differs by distribution, and getting it
+        # backwards is a silent factor error in the gradient:
+        #   Normal(mu, s)        -> s is a standard deviation
+        #   MvNormal(mu, s^2*I)  -> s^2 is a variance, so sigma = s
+        #   MvNormal(mu, s*I)    -> s is the variance, so sigma = sqrt(s)
+        # The recognizer recorded whether the expression was squared
+        # (`_gm_scale_is_variance`) precisely so this does not have to guess.
+        sq = _gm_scale_is_variance(get(ps.args, 2, nothing))
+        sd = ps.dist === :Normal ? s : (sq ? s : sqrt(s))
+    end
+    return mu, sd
+end
+
+function _gm_hier_logpdf(ps::PriorSite, v, vals)
+    mu, sd = _gm_hier_params(ps, vals)
+    n = length(v)
+    ss = 0.0
+    @inbounds for x in v; ss += (x - mu)^2; end
+    return -0.5*ss/sd^2 - n*(log(sd) + 0.5*log(2pi))
+end
+
+function _gm_hier_grad!(g, ps::PriorSite, v, vals, layout)
+    mu, sd = _gm_hier_params(ps, vals)
+    s2 = sd*sd
+    # the site's own gradient
+    dv = @. -(v - mu)/s2
+    slot = getproperty(layout.slots, ps.name)
+    _gm_add_chained!(g, slot.range, dv, v, ps, layout)
+
+    # hyper-location: dL/dmu = sum((x - mu)/sigma^2)
+    if ps.hyper_loc !== nothing
+        acc = 0.0
+        @inbounds for x in v; acc += (x - mu); end
+        _gm_add_hyper!(g, ps.hyper_loc, acc/s2, vals, layout)
+    end
+    # hyper-scale: dL/dsigma = sum((x-mu)^2/sigma^2 - 1)/sigma
+    if ps.hyper_scale !== nothing
+        ss = 0.0
+        @inbounds for x in v; ss += (x - mu)^2; end
+        dsd = (ss/s2 - length(v))/sd
+        _gm_add_hyper!(g, ps.hyper_scale, dsd, vals, layout)
+    end
+    return nothing
+end
+
+# Add a derivative w.r.t. a hyperparameter's CONSTRAINED value into g, chained
+# through that hyperparameter's own bijector. Note this ADDS: a hyperparameter
+# also has its own prior contribution, and may be shared by several sites.
+function _gm_add_hyper!(g, name::Symbol, dval, vals, layout)
+    slot = getproperty(layout.slots, name)
+    i = first(slot.range)
+    d = _gm_exemplar_by_name(name, layout)
+    if _gm_positive_support(d)
+        g[i] += dval * _gm_scalar(vals[name])   # x = exp(z), dx/dz = x
+    else
+        g[i] += dval
+    end
+    return nothing
+end
+
+function _gm_exemplar_by_name(name::Symbol, layout)
+    for rec in layout.meta
+        rec.name === name && return rec.dist_exemplar
+    end
+    error("gradmode: no layout record for $(name)")
 end
 
 # Adds `dv` (a derivative w.r.t. the CONSTRAINED value) into g at `range`,
@@ -446,11 +546,35 @@ function _gm_mvnormal_var_of(ps::PriorSite)
 end
 
 # Numeric literal from a prior's argument list, or a default when absent.
+#
+# Sees through numeric CASTS (`pT(10)`, `Float32(2.5)`) and `zero(pT)`/`one(pT)`,
+# which is how this package's own models are written (parameters are
+# Float32-first, so distribution literals are routinely cast). Treating
+# `pT(10)` as unparseable and silently falling back to the DEFAULT was a real
+# bug: `Normal(zero(pT), pT(10))` was evaluated with sd=1 instead of 10, giving
+# a wrong log-density and a wrong prior gradient. Caught by check_gradmode.
+#
+# Returns `nothing` when the argument is present but not a recognizable
+# constant, so callers can distinguish "absent, use default" from "present but
+# not understood" — the latter must reject rather than guess.
 function _gm_num(args, i, default)
     length(args) >= i || return default
-    a = args[i]
+    v = _gm_const(args[i])
+    v === nothing && error("gradmode: non-constant prior argument $(args[i])")
+    return v
+end
+
+# A compile-time numeric constant, seeing through casts and zero/one.
+function _gm_const(a)
     a isa Number && return float(a)
-    return default
+    if a isa Expr && a.head == :call && length(a.args) == 2
+        f = _gm_head(a.args[1])
+        f === :zero && return 0.0
+        f === :one && return 1.0
+        # a numeric cast such as `pT(10)` / `Float64(2.5)`
+        a.args[2] isa Number && return float(a.args[2])
+    end
+    return nothing
 end
 
 # =============================================================================
