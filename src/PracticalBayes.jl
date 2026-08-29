@@ -25,6 +25,10 @@ include("layout.jl")
 include("model.jl")
 include("tilde.jl")
 include("compiler.jl")
+# Stage 2 GLM recognizer. Loaded so it is testable, but INERT: nothing in the
+# package calls `recognize_glm` and it generates no code. Wiring it into
+# `@model` is a later, separate step gated on a runtime gradient check.
+include("gradmode_recognize.jl")
 include("logdensity.jl")
 include("optimize.jl")
 include("latent.jl")

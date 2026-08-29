@@ -10,6 +10,7 @@ using PracticalBayes
     include("optimize.jl")
     include("gibbs.jl")
     include("check_depends.jl")
+    include("gradmode_recognize.jl")
     include("sample.jl")
     include("predict.jl")
     include("turing_comparison.jl")
