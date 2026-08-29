@@ -40,10 +40,13 @@ include("check_depends.jl")
 include("nuts_to_hmc.jl")
 include("adaptive_hmc.jl")
 include("progress.jl")
+include("static_hmc.jl")
+include("static_hmc_api.jl")
 include("sample.jl")
 include("predict.jl")
 
 export @model, @static_model, Model, condition, decondition, @addlogprob!
+export static_nuts, static_hmc, static_gradient, StaticHMCResult
 export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit, BernoulliCLogLog
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
