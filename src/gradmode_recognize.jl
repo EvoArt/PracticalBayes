@@ -118,7 +118,19 @@ end
 # not change d(logpdf)/dx anywhere in the interior of the support. Both are
 # therefore safe to see through — but only when the inner distribution is
 # itself on the whitelist, which `_gm_match_prior` enforces recursively.
-const GRADMODE_PRIORS = Set([:Normal, :MvNormal, :Exponential])
+#
+# Every entry here needs a known closed-form d(logpdf)/dx:
+#   Normal/MvNormal  -(x-mu)/sigma^2
+#   Exponential      -1/theta            (plus the log-Jacobian of exp)
+#   Cauchy           -2(x-mu)/(sigma^2+(x-mu)^2)
+#   Flat/FlatPos     0  (improper, contributes NOTHING to value or gradient)
+#   Uniform          0  in the interior of the support
+# `Flat`/`FlatPos`/`Uniform` are the reason so much of the corpus is
+# reachable: they are extremely common as weak priors and are the easiest
+# derivatives in the set.
+const GRADMODE_PRIORS = Set([
+    :Normal, :MvNormal, :Exponential, :Cauchy, :Flat, :FlatPos, :Uniform,
+])
 const GRADMODE_PRIOR_WRAPPERS = Set([:filldist, :Truncated, :truncated])
 
 # Likelihood links with a one-line d(loglik)/d(eta). These are the GLM cases
@@ -140,7 +152,10 @@ Returns a `GLMPlan` on success, or `nothing` if anything at all is
 unrecognized. `nothing` is not an error: it means "use general AD", which is
 always correct.
 """
-function recognize_glm(body, argnames)
+function recognize_glm(body, argnames_in)
+    # copied because derived data names (`x = hcat(...)`) are added as we go,
+    # and the caller's set must not be mutated
+    argnames = Set{Symbol}(argnames_in)
     priors = PriorSite[]
     params = Set{Symbol}()       # names bound by a `~` prior so far
     etas = Dict{Symbol,Vector{LinTerm}}()   # name => decomposition, for `eta = ...`
@@ -175,10 +190,21 @@ function recognize_glm(body, argnames)
             continue
         end
 
-        # --- plain assignment: only allowed to build a linear predictor
-        if stmt isa Expr && stmt.head == :(=)
+        # --- assignment (`=` or `:=`): either pure data preprocessing, or the
+        # construction of a linear predictor.
+        #
+        # Data preprocessing (`dist100 = dist ./ 100`, `x = hcat(a,b,c)`) is
+        # accepted and the new name is recorded as DATA: it involves no
+        # parameters, so it is a constant with respect to the gradient no
+        # matter what it computes. This is what lets models that massage their
+        # inputs before the tilde sites still be recognized.
+        if stmt isa Expr && (stmt.head == :(=) || stmt.head == :(:=))
             lhs, rhs = stmt.args[1], stmt.args[2]
             lhs isa Symbol || return nothing
+            if _gm_param_free(rhs, params)
+                push!(argnames, lhs)     # a derived data value
+                continue
+            end
             terms = _gm_linear_terms(rhs, params, argnames, etas)
             terms === nothing && return nothing
             etas[lhs] = terms
