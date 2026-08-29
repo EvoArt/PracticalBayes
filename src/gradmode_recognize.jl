@@ -140,10 +140,13 @@ const GRADMODE_PRIOR_WRAPPERS = Set([:filldist, :Truncated, :truncated])
 
 # Likelihood links with a one-line d(loglik)/d(eta). These are the GLM cases
 # where the whole point of the exercise lives:
-#   BernoulliLogit: y - logistic(eta)
-#   LogPoisson:     y - exp(eta)
-#   Normal/MvNormal: (y - eta)/sigma^2
-const GRADMODE_LINKS = Set([:BernoulliLogit, :LogPoisson, :Normal, :MvNormal])
+#   BernoulliLogit:   y - logistic(eta)
+#   LogPoisson:       y - exp(eta)
+#   BernoulliCLogLog: y*m*exp(-m)/p - (1-y)*m,  m = exp(eta)   [survival/hazard]
+#   Normal/MvNormal:  (y - eta)/sigma^2
+const GRADMODE_LINKS = Set([
+    :BernoulliLogit, :LogPoisson, :BernoulliCLogLog, :Normal, :MvNormal,
+])
 
 """
     recognize_glm(body, argnames) -> Union{GLMPlan,Nothing}
@@ -219,8 +222,35 @@ function recognize_glm(body, argnames_in)
             continue
         end
 
-        # Anything else (loops, control flow, calls, @addlogprob!, ...) is
-        # outside the grammar. Reject the WHOLE model — rule 1 above.
+        # --- `@addlogprob! sum(logpdf.(Dist.(<pred>), y))` as the LIKELIHOOD.
+        #
+        # This vectorised-sum idiom is a common hand-optimisation (it avoids a
+        # per-row tilde site) and is exactly how the jolly island epi models
+        # write their observes, so recognizing it is what lets those models use
+        # the fast path at all. It is accepted ONLY in this precise shape — a
+        # sum of a broadcast logpdf over a whitelisted link applied to a
+        # recognized linear predictor. Any other `@addlogprob!` expression is
+        # an arbitrary log-density term we cannot differentiate in closed form,
+        # and rejects the model.
+        # (the macro name may be qualified — `PracticalBayes.@addlogprob!` —
+        # in which case `args[1]` is an Expr, not a Symbol; `_gm_head` handles
+        # both, same as for qualified function names)
+        if stmt isa Expr && stmt.head == :macrocall &&
+           _gm_head(stmt.args[1]) == Symbol("@addlogprob!")
+            aargs = stmt.args[3:end]
+            # a `depends=` annotation implies Gibbs blocking, which GradMode
+            # does not support (it derives the whole model at once)
+            length(aargs) == 1 || return nothing
+            response !== nothing && return nothing
+            lk, ev, tms, resp = _gm_match_addlogprob(aargs[1], etas, params, argnames)
+            lk === nothing && return nothing
+            link = lk; eta_var = ev; eta_terms = tms
+            response = resp; dotted = true; scale = nothing
+            continue
+        end
+
+        # Anything else (loops, control flow, other calls, ...) is outside the
+        # grammar. Reject the WHOLE model — rule 1 above.
         return nothing
     end
 
@@ -323,7 +353,56 @@ function _gm_match_prior(name, rhs, params)
     for a in rhs.args[2:end]
         _gm_param_free(a, params) || return nothing
     end
+    # MvNormal's covariance argument: codegen implements ONLY the unit-scale
+    # case (`MvNormal(mu, I)`), whose gradient is `-v`. A scaled covariance
+    # (`MvNormal(mu, 25.0 * I)`) has gradient `-v/25` — silently using the
+    # unit form there produces a WRONG gradient, not a slow one, so anything
+    # that is not recognizably plain `I` is rejected.
+    #
+    # This was a real bug caught by `check_gradmode`, not by recognition:
+    # `MvNormal(zeros(p), 25.0*I)` was accepted and then differentiated as if
+    # the prior were standard normal. Exactly the failure mode the verification
+    # harness exists for.
+    # Accepted forms are plain `I` (unit) and `c * I` / `I * c` with a NUMERIC
+    # literal `c` (variance `c`, so the gradient is `-v/c`). `c` must be a
+    # literal because codegen reads it at recognition time; a symbolic scale
+    # would need evaluating in the user's scope, which recognition cannot do.
+    if d === :MvNormal && length(rhs.args) >= 3
+        _gm_mvnormal_var(rhs.args[3]) === nothing && return nothing
+    end
     return PriorSite(name, d, collect(rhs.args[2:end]))
+end
+
+"""
+    _gm_mvnormal_var(ex) -> Union{Float64,Nothing}
+
+The scalar variance of an `MvNormal` covariance argument, or `nothing` if the
+expression is not a recognized isotropic form. `I` -> 1.0, `25.0 * I` -> 25.0.
+"""
+function _gm_mvnormal_var(ex)
+    _gm_head(ex) === :I && return 1.0
+    # `MvNormal(mu, 4.0)` — a bare scalar variance (Distributions treats this
+    # as an isotropic covariance), and `MvNormal(mu, pT(4.0))`.
+    ex isa Number && return float(ex)
+    (v = _gm_cast_literal(ex)) !== nothing && return v
+    if ex isa Expr && ex.head == :call && _gm_head(ex.args[1]) in (:*, :.*) &&
+       length(ex.args) == 4 - 1
+        a, b = ex.args[2], ex.args[3]
+        _gm_head(a) === :I && b isa Number && return float(b)
+        _gm_head(b) === :I && a isa Number && return float(a)
+        # `pT(25.0) * I` — a precision-cast literal, extremely common in this
+        # package's own models since parameters are Float32-first.
+        _gm_head(b) === :I && (v = _gm_cast_literal(a)) !== nothing && return v
+        _gm_head(a) === :I && (v = _gm_cast_literal(b)) !== nothing && return v
+    end
+    return nothing
+end
+
+# `pT(25.0)` / `Float32(25.0)` -> 25.0, for any one-argument numeric cast.
+function _gm_cast_literal(ex)
+    (ex isa Expr && ex.head == :call && length(ex.args) == 2 &&
+     ex.args[2] isa Number) || return nothing
+    return float(ex.args[2])
 end
 
 # True when `ex` mentions none of `params` anywhere in its tree.
@@ -390,6 +469,45 @@ function _gm_match_link(rhs, isdot, etas, params, argnames)
     end
 
     return fail
+end
+
+"""
+    _gm_match_addlogprob(ex, etas, params, argnames) -> (link, eta_var, terms, response)
+
+Match `sum(logpdf.(Dist.(<pred>), y))` — the vectorised-sum observe idiom —
+returning `(nothing, nothing, LinTerm[], nothing)` if `ex` is anything else.
+
+Deliberately rigid. `@addlogprob!` can carry ANY expression, including terms
+with no closed-form derivative, so this accepts one exact shape and rejects
+everything else rather than trying to interpret the expression generally.
+"""
+function _gm_match_addlogprob(ex, etas, params, argnames)
+    fail = (nothing, nothing, LinTerm[], nothing)
+    (ex isa Expr && ex.head == :call && _gm_head(ex.args[1]) === :sum &&
+     length(ex.args) == 2) || return fail
+    inner = ex.args[2]
+    # `logpdf.(dists, y)` parses as Expr(:., :logpdf, :(tuple(dists, y)))
+    (inner isa Expr && inner.head == :. && length(inner.args) == 2 &&
+     _gm_head(inner.args[1]) === :logpdf) || return fail
+    tup = inner.args[2]
+    (tup isa Expr && tup.head == :tuple && length(tup.args) == 2) || return fail
+    dists, resp = tup.args
+    # response must be a data name
+    (resp isa Symbol && resp in argnames) || return fail
+    # `Dist.(<pred>)`
+    (dists isa Expr && dists.head == :. && length(dists.args) == 2) || return fail
+    f = _gm_head(dists.args[1])
+    (f !== nothing && f in GRADMODE_LINKS) || return fail
+    dtup = dists.args[2]
+    (dtup isa Expr && dtup.head == :tuple && length(dtup.args) == 1) || return fail
+
+    pex = dtup.args[1]
+    if pex isa Symbol && haskey(etas, pex)
+        return (f, pex, copy(etas[pex]), resp)
+    end
+    tms = _gm_linear_terms(pex, params, argnames, etas)
+    tms === nothing && return fail
+    return (f, nothing, tms, resp)
 end
 
 """

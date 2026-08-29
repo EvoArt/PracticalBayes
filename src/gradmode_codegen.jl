@@ -195,7 +195,11 @@ function logpdf_of(ps::PriorSite, v)
         mu, sd = _gm_num(ps.args, 1, 0.0), _gm_num(ps.args, 2, 1.0)
         return sum(@. -0.5*((v-mu)/sd)^2 - log(sd) - 0.5*log(2pi))
     elseif d === :MvNormal
-        return sum(@. -0.5*v^2) - 0.5*length(v)*log(2pi)
+        # isotropic covariance `c*I`; `c` recovered from the AST at
+        # recognition time (see _gm_mvnormal_var). Ignoring it silently
+        # differentiates a scaled prior as if it were standard normal.
+        c = _gm_mvnormal_var_of(ps)
+        return sum(@. -0.5*v^2/c) - 0.5*length(v)*(log(2pi) + log(c))
     elseif d === :Exponential
         th = _gm_num(ps.args, 1, 1.0)
         return sum(@. -v/th - log(th))
@@ -216,7 +220,8 @@ function _gm_prior_grad!(g, ps::PriorSite, v, layout, theta)
         mu, sd = _gm_num(ps.args, 1, 0.0), _gm_num(ps.args, 2, 1.0)
         @. -(v-mu)/sd^2
     elseif d === :MvNormal
-        @. -v
+        c = _gm_mvnormal_var_of(ps)
+        @. -v/c
     elseif d === :Exponential
         th = _gm_num(ps.args, 1, 1.0)
         fill(-1/th, size(v))
@@ -351,6 +356,25 @@ function _gm_link_loglik_and_dEta!(w, link::Symbol, eta, y, sigma)
             w[i] = y[i] - m
         end
         ll -= _gm_logfactorial_sum(y)
+    elseif link === :BernoulliCLogLog
+        # complementary log-log: p = 1 - exp(-exp(eta)).
+        # With m = exp(eta):  log p = log1p(-exp(-m)),  log(1-p) = -m.
+        # dL/deta = y * m*exp(-m)/p  -  (1-y)*m
+        # The y=0 branch is exactly -m, which is why this is written as two
+        # branches rather than via a shared `p` — it avoids both a cancellation
+        # and a division when y=0.
+        @inbounds for i in eachindex(eta)
+            m = exp(eta[i])
+            if y[i] > 0
+                em = exp(-m)
+                p = -expm1(-m)          # 1 - exp(-m), accurate for small m
+                ll += log(p)
+                w[i] = m*em/p
+            else
+                ll += -m
+                w[i] = -m
+            end
+        end
     elseif link === :Normal || link === :MvNormal
         s2 = sigma*sigma
         @inbounds @simd for i in eachindex(eta)
@@ -412,6 +436,14 @@ end
 # --- small helpers ----------------------------------------------------------
 
 @inline _gm_scalar(v) = v isa AbstractArray ? v[1] : v
+
+# The isotropic variance of an MvNormal prior site (1.0 when unspecified).
+function _gm_mvnormal_var_of(ps::PriorSite)
+    length(ps.args) >= 2 || return 1.0
+    v = _gm_mvnormal_var(ps.args[2])
+    v === nothing && error("gradmode: unrecognized MvNormal covariance for $(ps.name)")
+    return v
+end
 
 # Numeric literal from a prior's argument list, or a default when absent.
 function _gm_num(args, i, default)

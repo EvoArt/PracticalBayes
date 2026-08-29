@@ -92,6 +92,40 @@ function Distributions.logpdf(d::LogPoisson, k::Real)
 end
 
 """
+    BernoulliCLogLog(η)
+
+`Bernoulli` under the complementary log-log link: `p = 1 - exp(-exp(η))`.
+
+The cloglog link is the standard choice for discrete-time survival / "hazard"
+data, where `η` is a log-hazard and the observation is whether an event
+occurred in the interval — it arises exactly from `P(event) = 1 - exp(-hazard)`
+for a rate `exp(η)`. That makes it the natural link for epidemic
+force-of-infection models (see e.g. the SEIC cloglog models in the badgers /
+jolly island work), which is why it is here alongside `LogPoisson` and
+`BinomialLogit` rather than left to a hand-written `@addlogprob!`.
+
+Taking `η` directly (rather than `Bernoulli(1 - exp(-exp(η)))`) keeps the
+whole computation on the log-hazard scale, which is both better conditioned
+for large `|η|` and what `GradMode`'s closed-form gradient recognizes.
+"""
+struct BernoulliCLogLog{T<:Real} <: Distributions.DiscreteUnivariateDistribution
+    η::T
+end
+
+Base.minimum(::BernoulliCLogLog) = 0
+Base.maximum(::BernoulliCLogLog) = 1
+# `-expm1(-m)` is `1 - exp(-m)` computed accurately when `m` is small, which is
+# the regime where the naive form loses all its significant digits.
+_cloglog_p(d::BernoulliCLogLog) = -expm1(-exp(d.η))
+Base.rand(rng::AbstractRNG, d::BernoulliCLogLog) = rand(rng) < _cloglog_p(d)
+function Distributions.logpdf(d::BernoulliCLogLog, x::Real)
+    Distributions.insupport(d, x) || return oftype(float(d.η), -Inf)
+    m = exp(d.η)
+    # log(1-p) = -m exactly, so the failure branch needs no logarithm at all.
+    return x > 0 ? log(-expm1(-m)) : -m
+end
+
+"""
     BinomialLogit(n, logitp)
 
 `Binomial` reparameterized by the logit of the success probability.

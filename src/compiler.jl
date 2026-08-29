@@ -407,9 +407,28 @@ end
 # macrocall's `args` are `(macro_name, __source__::LineNumberNode, actual_args...)`,
 # so the expression itself is always `x.args[3]` for the one-argument form
 # this macro supports.
+# The final component of a (possibly qualified) macro name:
+# `@addlogprob!` and `PracticalBayes.@addlogprob!` both -> `Symbol("@addlogprob!")`.
+function _macroname(ex)
+    ex isa Symbol && return ex
+    if ex isa Expr && ex.head == :. && length(ex.args) == 2
+        q = ex.args[2]
+        q isa QuoteNode && q.value isa Symbol && return q.value
+        q isa Symbol && return q
+    end
+    return nothing
+end
+
 function _rewrite_addlogprob(body)
     return postwalk(body) do x
-        if x isa Expr && x.head == :macrocall && x.args[1] == Symbol("@addlogprob!")
+        # The macro name may be written QUALIFIED (`PracticalBayes.@addlogprob!`
+        # / `PB.@addlogprob!`), in which case `args[1]` is an `Expr`
+        # (`PB.var"@addlogprob!"`) rather than the bare Symbol. Matching only
+        # the bare Symbol left the qualified form un-rewritten, so it reached
+        # the `@addlogprob!` stub at run time and raised "can only be used
+        # inside an @model function body" — inside an @model body. Compare the
+        # final component instead, which handles both spellings.
+        if x isa Expr && x.head == :macrocall && _macroname(x.args[1]) == Symbol("@addlogprob!")
             # args are (macro_name, LineNumberNode, expr[, depends=(...)])
             args = x.args[3:end]
             isempty(args) && error("`@addlogprob!` takes at least one expression, got: $x")

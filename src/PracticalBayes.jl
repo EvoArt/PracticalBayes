@@ -44,7 +44,7 @@ include("sample.jl")
 include("predict.jl")
 
 export @model, @static_model, Model, condition, decondition, @addlogprob!
-export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit
+export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit, BernoulliCLogLog
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction
