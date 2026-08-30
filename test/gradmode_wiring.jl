@@ -101,6 +101,30 @@ end
     @test length(g) == lay.dim
 end
 
+@testset "vector hyper-location (regression: silently wrong gradient)" begin
+    # `a ~ MvNormal(mu, I)` with mu a VECTOR parameter. `_gm_hier_params`
+    # collapsed it to `mu[1]` via `_gm_scalar`, so every element of `a` was
+    # scored against the same hyper-mean and the whole hyper-location gradient
+    # was dumped into mu[1] with zeros elsewhere. Value AND gradient were wrong.
+    #
+    # Found while checking whether a `::Float64` return annotation on
+    # `_gm_hier_params` would be safe -- it would NOT have been, and asking
+    # that question is what surfaced this.
+    PB.@model function gm_vechyper(y, grp, J)
+        pT = PB.paramtype(__mode__)
+        mu ~ Distributions.MvNormal(zeros(pT, J), LinearAlgebra.I)
+        a ~ Distributions.MvNormal(mu, LinearAlgebra.I)
+        y ~ Distributions.MvNormal(a[grp], LinearAlgebra.I)
+    end
+    rng = Random.Xoshiro(11); Nv, Jv = 60, 5
+    grpv = rand(rng, 1:Jv, Nv); yv = randn(rng, Nv)
+    mv = gm_vechyper(yv, grpv, Jv)
+    @test gradmode_plan(mv.f) !== nothing
+    lay, θ0, store = build_layout(mv)
+    fad = LogDensityFunction(mv, lay, store, ADTypes.AutoForwardDiff(); θ0=θ0)
+    @test check_gradmode(gradmode_plan(mv.f), lay, mv.args, fad; n=5, rng=Random.Xoshiro(2))
+end
+
 @testset "general AD path is unchanged by the @model plan emission" begin
     # the macro now also emits a `gradmode_plan` method; make sure that has not
     # perturbed the ordinary evaluation path

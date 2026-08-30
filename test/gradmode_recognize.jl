@@ -193,6 +193,16 @@ end  # must accept
         y ~ arraydist(BernoulliLogit.(a[grp]))
     end) == :accept
 
+    # A VECTOR-valued hyper-location: `a ~ MvNormal(mu, I)` where mu is itself
+    # a vector parameter (not a scalar broadcast via `fill`). Accepted, and it
+    # must be differentiated ELEMENTWISE -- see the gradmode_wiring regression
+    # test, which is where the wrongness was actually observable.
+    @test _recog([:y, :grp, :J], quote
+        mu ~ MvNormal(zeros(J), I)
+        a ~ MvNormal(mu, I)
+        y ~ MvNormal(a[grp], 1.0)
+    end) == :accept
+
     # UniformScaling spelling (seeds_centered / seeds_stanified shape)
     @test _recog([:y, :grp, :G], quote
         sigma ~ Exponential(1.0)

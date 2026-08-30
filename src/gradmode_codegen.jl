@@ -260,10 +260,20 @@ _gm_is_hier(ps::PriorSite) = ps.hyper_loc !== nothing || ps.hyper_scale !== noth
 
 # Resolved (mu, sigma) for a hierarchical site: from `vals` when the argument
 # is a parameter, otherwise the literal from the AST.
+# `mu` may be SCALAR (a hyper-mean broadcast over the site, `fill(mu_a, J)`)
+# or a VECTOR (`a ~ MvNormal(mu, I)` with `mu` itself a vector parameter).
+# `_gm_scalar` collapses the vector case to `mu[1]`, which silently uses one
+# element for every observation — a wrong gradient, not a slow one. So the
+# vector case is kept as a vector and the arithmetic below broadcasts.
+#
+# Found while investigating an unrelated type-inference question: annotating
+# this `::Float64` (the obvious fix for the inference problem) would have been
+# WRONG precisely because of this case, and checking whether the annotation
+# was safe is what surfaced the bug.
 function _gm_hier_params(ps::PriorSite, vals)
     mu = ps.hyper_loc === nothing ?
         (ps.dist === :MvNormal ? 0.0 : _gm_num(ps.args, 1, 0.0)) :
-        _gm_scalar(vals[ps.hyper_loc])
+        _gm_hyper_value(vals[ps.hyper_loc])
     if ps.hyper_scale === nothing
         sd = ps.dist === :MvNormal ? sqrt(_gm_mvnormal_var_of(ps)) : _gm_num(ps.args, 2, 1.0)
     else
@@ -284,29 +294,54 @@ end
 function _gm_hier_logpdf(ps::PriorSite, v, vals)
     mu, sd = _gm_hier_params(ps, vals)
     n = length(v)
+    #  is scalar or elementwise;  handles both without
+    # allocating a broadcast temporary.
     ss = 0.0
-    @inbounds for x in v; ss += (x - mu)^2; end
+    @inbounds for k in eachindex(v); ss += (v[k] - _gm_mu_at(mu, k))^2; end
     return -0.5*ss/sd^2 - n*(log(sd) + 0.5*log(2pi))
+end
+
+# One element of a hyper-location that may be a scalar or a vector.
+@inline _gm_mu_at(mu::Real, k) = mu
+@inline _gm_mu_at(mu::AbstractArray, k) = @inbounds mu[k]
+
+# A hyperparameter value: scalars stay scalar, length-1 vectors collapse (a
+# scalar site is stored as a 1-element view), longer vectors stay vectors.
+@inline function _gm_hyper_value(v)
+    v isa AbstractArray || return v
+    return length(v) == 1 ? @inbounds(v[1]) : v
 end
 
 function _gm_hier_grad!(g, ps::PriorSite, v, vals, layout)
     mu, sd = _gm_hier_params(ps, vals)
     s2 = sd*sd
-    # the site's own gradient
-    dv = @. -(v - mu)/s2
+    # elementwise in both cases: broadcasting a scalar mu is a no-op, and a
+    # vector mu lines up with v element for element
+    dv = [-(v[k] - _gm_mu_at(mu, k))/s2 for k in eachindex(v)]
     slot = getproperty(layout.slots, ps.name)
     _gm_add_chained!(g, slot.range, dv, v, ps, layout)
 
-    # hyper-location: dL/dmu = sum((x - mu)/sigma^2)
+    # hyper-location. For a SCALAR hyper-mean every element contributes to the
+    # same partial, so the contributions sum:  dL/dmu = sum((x - mu)/sigma^2).
+    # For a VECTOR hyper-mean each element has its OWN partial and they must
+    # NOT be summed:  dL/dmu[k] = (x[k] - mu[k])/sigma^2. Collapsing the vector
+    # case into a single sum (which is what happened before `_gm_hyper_value`
+    # kept vectors intact) put the whole sum into mu[1] and zero elsewhere.
     if ps.hyper_loc !== nothing
-        acc = 0.0
-        @inbounds for x in v; acc += (x - mu); end
-        _gm_add_hyper!(g, ps.hyper_loc, acc/s2, vals, layout)
+        if mu isa AbstractArray
+            _gm_add_hyper_vec!(g, ps.hyper_loc, v, mu, s2, vals, layout)
+        else
+            acc = 0.0
+            @inbounds for x in v; acc += (x - mu); end
+            _gm_add_hyper!(g, ps.hyper_loc, acc/s2, vals, layout)
+        end
     end
-    # hyper-scale: dL/dsigma = sum((x-mu)^2/sigma^2 - 1)/sigma
+    # hyper-scale: dL/dsigma = sum((x-mu)^2/sigma^2 - 1)/sigma. The scale is
+    # always scalar (the recognizer only accepts scalar scale forms), so this
+    # sum is correct in both cases.
     if ps.hyper_scale !== nothing
         ss = 0.0
-        @inbounds for x in v; ss += (x - mu)^2; end
+        @inbounds for k in eachindex(v); ss += (v[k] - _gm_mu_at(mu, k))^2; end
         dsd = (ss/s2 - length(v))/sd
         _gm_add_hyper!(g, ps.hyper_scale, dsd, vals, layout)
     end
@@ -324,6 +359,21 @@ function _gm_add_hyper!(g, name::Symbol, dval, vals, layout)
         g[i] += dval * _gm_scalar(vals[name])   # x = exp(z), dx/dz = x
     else
         g[i] += dval
+    end
+    return nothing
+end
+
+# Vector hyper-location: each element of  gets its OWN partial, written
+# into its own slot position, rather than one summed value.
+function _gm_add_hyper_vec!(g, name::Symbol, v, mu, s2, vals, layout)
+    slot = getproperty(layout.slots, name)
+    d = _gm_exemplar_by_name(name, layout)
+    pos = _gm_positive_support(d)
+    mv = vals[name]
+    o = first(slot.range) - 1
+    @inbounds for k in eachindex(v)
+        dk = (v[k] - mu[k])/s2
+        g[o + k] += pos ? dk * mv[k] : dk
     end
     return nothing
 end
