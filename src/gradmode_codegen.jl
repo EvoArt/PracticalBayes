@@ -121,6 +121,24 @@ function gradmode_value_and_gradient!(plan::GLMPlan, layout, args, theta, g, ws)
     # `_gm_read_param` goes through the same bijector call `_assume` uses, so
     # constrained parameters (e.g. Exponential -> exp) are handled identically
     # and the log-Jacobian is accumulated the same way.
+    # `vals` maps a site name to its CONSTRAINED value. `Any` because the
+    # values are heterogeneous: a scalar site gives a `Float64`, a vector site
+    # gives a `SubArray` (NOT a `Vector` — `_linked_view` deliberately
+    # constructs a `Base.SubArray` to dodge AD backends that overload `view`;
+    # see its docstring in tilde.jl). The element type is not fixed either:
+    # `theta` may be Float32 (this package is Float32-first) or a Dual under a
+    # ForwardDiff-family backend.
+    #
+    # KNOWN COST, not an oversight: this `Any` is why `_gm_hier_params` infers
+    # `Tuple{Any,Any}`, which blocks `juliac --trim=safe` (162 verifier errors
+    # cascade from here) and costs some dynamic dispatch on the prior/scale
+    # arithmetic. The fix is NOT to annotate at the use site — hyper-locations
+    # can legitimately be vectors, and asserting `::Float64` there is what
+    # would have reintroduced the wrong gradient fixed in e31e113. The right
+    # fix is to stop using a Dict: the name set is fixed at recognition time
+    # (`plan.priors`), so these could live in a NamedTuple or a
+    # position-indexed Vector, concrete by construction rather than by
+    # assertion. Not done yet; see trimtest/HANDOVER.md.
     vals = Dict{Symbol,Any}()
     lp = zero(T)
     for ps in plan.priors
