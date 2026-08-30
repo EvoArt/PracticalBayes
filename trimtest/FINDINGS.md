@@ -102,7 +102,14 @@ before being believed.
 
 ## Reproducing the working trimmed binary (PBTrim)
 
+`juliac-env` is a one-off environment holding JuliaC itself. It is NOT in the
+repo -- create it first, or the build step below fails with a missing project:
+
     cd trimtest
+    julia -e 'using Pkg; Pkg.activate("juliac-env"); Pkg.add("JuliaC")'
+
+Then:
+
     julia --project=PBTrim -e 'using Pkg; Pkg.develop(path=".."); Pkg.instantiate()'
     julia --project=PBTrim -e 'using PBTrim; PBTrim.main(String[])'    # JIT reference
     julia --project=juliac-env -e 'using JuliaC; JuliaC.main(ARGS)' -- \
@@ -110,9 +117,8 @@ before being believed.
     JULIA_LOAD_CODEGEN_LIB=0 ./pb_build/bin/pbtrim.exe
 
 Expected: 0 verifier errors, and the binary's output IDENTICAL to the JIT's to
-all 16 digits. `juliac-env` is a one-off environment holding JuliaC itself:
-
-    julia -e 'using Pkg; Pkg.activate("juliac-env"); Pkg.add("JuliaC")'
+all 16 digits. Running under JULIA_LOAD_CODEGEN_LIB=0 is not optional -- it is
+what makes a silent JIT fallback fail loudly instead of passing unnoticed.
 
 GMTrim is the same experiment with GradMode instead of a hand-supplied
 gradient. It currently fails with 162 verifier errors; see the vals section
