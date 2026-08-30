@@ -96,9 +96,47 @@ The other session's assessment, which I agree with: type the container where
 the invariant is **established**, not asserted at the use site, and add a
 recognizer-side rejection for any site whose linked representation is not
 scalar-or-vector, so the invariant is enforced rather than assumed.
-`Dict{Symbol,Union{Float64,Vector{Float64}}}` is very likely the closed union
-in practice but is not enforced, and a Dict that throws at runtime on a
-matrix-valued site is a worse failure than being untrimmable. Estimated ~1 hour.
+
+**A closed union spelled by hand does NOT work.** I originally suggested
+`Dict{Symbol,Union{Float64,Vector{Float64}}}` here. That is wrong, and
+practicalbayes-63 measured why -- calling `_gm_read_param` directly on a model
+exercising every recognized site kind:
+
+    s     -> Float64
+    mu    -> Float64
+    beta  -> SubArray{Float64, 1, Vector{Float64}, Tuple{UnitRange{Int64}}, true}
+    a     -> SubArray{Float64, 1, Vector{Float64}, Tuple{UnitRange{Int64}}, true}
+
+Two errors in that suggestion. The vector arm is a **SubArray, not a Vector**:
+`_gm_read_param` reads through `_linked_view(theta, slot.range)`, deliberately
+a `Base.SubArray` rather than a plain view, because some AD backends overload
+`view` to return their own type (PolyesterForwardDiff is the one that bit them
+-- see the comment in tilde.jl). And the **element type is not fixed**: this
+package is Float32-first, so theta may be `Vector{Float32}`, and under a
+ForwardDiff-family backend it is `Vector{<:Dual}`. GradMode is Float64-only in
+practice today, but the container type must be honest about what
+`_gm_read_param` can return.
+
+Note the failure mode that makes this dangerous: a hand-written union passes a
+Float64 test and fails on a Float32 model.
+
+Two directions that would actually work:
+
+1. Parameterise on the element type and store the view type, roughly
+   `Dict{Symbol,Union{T,SubArray{T,1,Vector{T},Tuple{UnitRange{Int}},true}}}`
+   with `T = eltype(theta)`. Concrete, but it hard-codes the SubArray spelling,
+   exactly the thing that silently breaks when the view machinery changes.
+
+2. **Stop using a Dict.** The set of names is known at recognition time
+   (`plan.priors` is fixed), so the values can live in a NamedTuple or a plain
+   Vector indexed by prior position, built once. That makes the types concrete
+   BY CONSTRUCTION rather than by assertion -- the "type where the invariant is
+   established" principle applied properly. Probably faster too, since it drops
+   the hashing.
+
+Option 2 is what practicalbayes-63 would do, and it is why the estimate is
+~1 hour rather than ten minutes: it is a real change to how `vals` is built,
+not an annotation.
 
 ## A clean verifier pass proves nothing
 
