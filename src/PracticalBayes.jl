@@ -37,6 +37,7 @@ include("conjugate.jl")
 include("save_states.jl")
 include("gibbs.jl")
 include("check_depends.jl")
+include("jittered_nsteps.jl")
 include("nuts_to_hmc.jl")
 include("adaptive_hmc.jl")
 include("progress.jl")
@@ -63,7 +64,7 @@ export check_depends, DependsReport
 export SaveToChain, SaveToBuffer, SaveToDisk, write_state_chunk!, read_states
 export SymChain
 # Re-exported so `using PracticalBayes` is self-contained for running inference:
-export sample, HMC, NUTS, HMCDA, NUTSthenHMC, AdaptiveHMC
+export sample, HMC, NUTS, HMCDA, NUTSthenHMC, AdaptiveHMC, JitteredNSteps
 export default_progress
 export returned, predict, chain_draws, loglikelihood_at, pointwise_loglikelihoods
 

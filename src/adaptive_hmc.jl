@@ -47,15 +47,19 @@ struct AdaptiveHMC{T<:Real,I,M} <: AbstractHMCSampler
     δ::T
     "Fixed number of leapfrog steps per iteration, in both warm-up and sampling."
     n_leapfrog::Int
+    "Whether to redraw the trajectory length uniformly from `1:n_leapfrog` each iteration."
+    jitter::Bool
     "Choice of integrator (`Symbol` or `AbstractIntegrator`); `:leapfrog` searches for ϵ."
     integrator::I
     "Choice of initial metric (`Symbol` for auto-init, or an `AbstractMetric`)."
     metric::M
 end
 
-function AdaptiveHMC(δ=0.8; n_leapfrog::Int=10, integrator=:leapfrog, metric=:diagonal)
+function AdaptiveHMC(
+    δ=0.8; n_leapfrog::Int=10, jitter::Bool=false, integrator=:leapfrog, metric=:diagonal
+)
     T = AdvancedHMC.determine_sampler_eltype(δ, integrator, metric)
-    return AdaptiveHMC(T(δ), n_leapfrog, integrator, metric)
+    return AdaptiveHMC(T(δ), n_leapfrog, jitter, integrator, metric)
 end
 
 # Unlike `NUTSthenHMC`, this sampler needs no wrapper state and no `step` methods
@@ -76,7 +80,9 @@ AdvancedHMC.sampler_eltype(::AdaptiveHMC{T}) where {T} = T
 # Fixed-length leapfrog trajectory, end-point sample — the same kernel
 # `NUTSthenHMC` switches to after warm-up, here used from the first iteration.
 function AdvancedHMC.make_kernel(spl::AdaptiveHMC, integrator::AdvancedHMC.AbstractIntegrator)
-    return HMCKernel(Trajectory{EndPointTS}(integrator, FixedNSteps(spl.n_leapfrog)))
+    return HMCKernel(
+        Trajectory{EndPointTS}(integrator, _n_steps_criterion(spl.n_leapfrog, spl.jitter))
+    )
 end
 
 # The piece plain `HMC` omits: a real Stan-style adaptor so warm-up learns the

@@ -157,13 +157,17 @@ evaluations per draw.
 `n_warmup` draws are discarded but adapt nothing; they only let the chain reach
 the typical set from `x0`.
 
-The trajectory length is jittered uniformly in `[1, L]`. A fixed L can resonate
-with a periodic posterior and return close to its starting point; Neal (2011)
-sec. 4.2 recommends jittering, and it costs nothing on average.
+The trajectory length is jittered uniformly in `[1, L]` by default (`jitter=true`).
+A fixed L can resonate with a periodic posterior and return close to its starting
+point; Neal (2011) sec. 4.2 recommends jittering, and it costs nothing on average
+-- in fact it *saves*, averaging `(L+1)/2` gradient evaluations per draw rather
+than `L`. Pass `jitter=false` for a strictly fixed `L` trajectory every iteration
+(e.g. when you want an exactly predictable per-draw cost, or are reproducing a
+fixed-length reference).
 """
 function static_hmc(gradf!::F, x0::Vector{Float64}, inv_mass::Vector{Float64},
                     eps::Float64, L::Int, n_draws::Int, n_warmup::Int;
-                    seed::Int=1) where {F}
+                    seed::Int=1, jitter::Bool=true) where {F}
     d = length(x0)
     length(inv_mass) == d ||
         throw(ArgumentError("inv_mass has length $(length(inv_mass)), expected $d"))
@@ -194,8 +198,14 @@ function static_hmc(gradf!::F, x0::Vector{Float64}, inv_mass::Vector{Float64},
 
         copyto!(x_save, x); copyto!(g_save, g); lp_save = lp
 
-        steps = 1 + Int(floor(_rand_uniform(rng) * L))
-        steps > L && (steps = L)
+        # Drawn independently of the current state, which is what keeps the
+        # usual Metropolis correction on the end point valid (Neal 2011 sec. 4.2).
+        if jitter
+            steps = 1 + Int(floor(_rand_uniform(rng) * L))
+            steps > L && (steps = L)
+        else
+            steps = L
+        end
 
         diverged = false
         for _ in 1:steps

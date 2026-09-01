@@ -39,10 +39,12 @@ struct NUTSthenHMC{T<:Real,I,M} <: AbstractHMCSampler
     nuts::AdvancedHMC.NUTS{T,I,M}
     "Fixed leapfrog step count for the post-warm-up HMC phase, or `nothing` to infer it."
     n_leapfrog::Union{Int,Nothing}
+    "Whether the post-warm-up phase redraws its trajectory length from `1:n_leapfrog` each iteration."
+    jitter::Bool
 end
 
-function NUTSthenHMC(δ=0.8; n_leapfrog=nothing, kwargs...)
-    return NUTSthenHMC(AdvancedHMC.NUTS(δ; kwargs...), n_leapfrog)
+function NUTSthenHMC(δ=0.8; n_leapfrog=nothing, jitter::Bool=false, kwargs...)
+    return NUTSthenHMC(AdvancedHMC.NUTS(δ; kwargs...), n_leapfrog, jitter)
 end
 
 # `sampler_eltype` is the one piece of AdvancedHMC's sampler interface that is
@@ -137,7 +139,10 @@ function AbstractMCMC.step(
     if !state.switched
         integrator = AdvancedHMC.getintegrator(state.inner)
         n = _post_warmup_n_leapfrog(spl, state)
-        κ = HMCKernel(Trajectory{EndPointTS}(integrator, FixedNSteps(n)))
+        # `jitter` applies only from here on: the warm-up above is real NUTS and
+        # is left exactly as it was. `n` is the ceiling for the jittered draw,
+        # not the per-iteration count.
+        κ = HMCKernel(Trajectory{EndPointTS}(integrator, _n_steps_criterion(n, spl.jitter)))
         state.inner = HMCState(
             state.inner.i, state.inner.transition, state.inner.metric, κ, state.inner.adaptor
         )
