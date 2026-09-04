@@ -56,7 +56,19 @@
 # details and for what to do when a new one is missing.
 # =============================================================================
 
-using Piste: Piste, value_and_gradient!
+# Piste is a WEAK dependency, so it is deliberately not imported here.
+#
+# Why: `--trim` requires Julia 1.12+, so a user on 1.10 (still the LTS, and a
+# version this package supports) can never trim anything and should not be made
+# to install an AD engine they cannot use. Making it weak also keeps the
+# `[sources]` entry — needed while Piste is unregistered — off the critical path
+# on Julia 1.10, where `[sources]` is silently ignored and would otherwise make
+# PracticalBayes unresolvable there.
+#
+# The backend TYPE lives here so it can always be named, `chunksize` works, and
+# asking for it without Piste loaded produces a clear error rather than an
+# `UndefVarError`. The gradient method itself lives in
+# `ext/PracticalBayesPisteExt.jl` and activates on `import Piste`.
 
 # =============================================================================
 # The user-facing backend

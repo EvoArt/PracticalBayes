@@ -82,6 +82,20 @@ function LogDensityFunction(
         return LogDensityFunction(model, layout, store, adtype, prep, reject_errors)
     end
     if adtype isa AutoPBForwardDiff
+        # Fail HERE, at construction, if the extension is not loaded. Without
+        # this the object builds fine and then falls through to the generic
+        # DifferentiationInterface path at gradient time, producing a
+        # `MethodError: no method matching value_and_gradient(...)` naming a
+        # dozen internal types — which says nothing about the actual problem.
+        if !_piste_loaded()
+            throw(ArgumentError(
+                "AutoPBForwardDiff() needs the Piste package to be loaded. Add " *
+                "`import Piste` (or `using Piste`) alongside `using PracticalBayes`.
+" *
+                "Piste is a weak dependency because `juliac --trim` — the reason " *
+                "this backend exists — requires Julia 1.12+, so users on 1.10 are " *
+                "not made to install it."))
+        end
         # Our own forward-mode duals (forwarddiff.jl). No preparation of any
         # kind: there is no tape to trace and no config to build — the chunk
         # width is a type parameter and the seeds are constructed per call.
@@ -104,6 +118,11 @@ function LogDensityFunction(
     prep = DI.prepare_gradient(_logdensity_call, adtype, θ0, DI.Constant(model), DI.Constant(layout), DI.Constant(store))
     return LogDensityFunction(model, layout, store, adtype, prep, reject_errors)
 end
+
+# True once `import Piste` has activated `ext/PracticalBayesPisteExt.jl`.
+# Asking the extension machinery directly is more honest than checking for the
+# Piste module itself: what matters is whether the gradient METHOD exists.
+_piste_loaded() = Base.get_extension(@__MODULE__, :PracticalBayesPisteExt) !== nothing
 
 # The actual "run the model and read off the joint log-density" step, shared
 # by both the density-only and density+gradient code paths below so there is
@@ -177,39 +196,17 @@ function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{<:Any,<:Any
     return AD === Nothing ? LogDensityProblems.LogDensityOrder{0}() : LogDensityProblems.LogDensityOrder{1}()
 end
 
-# AutoPBForwardDiff: our own forward-mode duals (forwarddiff.jl), the backend
-# that survives `juliac --trim`. Same contract as every other path here —
-# returns `(value, gradient)` with the same `reject_errors` semantics — so a
-# sampler cannot tell which backend it is talking to.
+# AutoPBForwardDiff's `logdensity_and_gradient` lives in
+# `ext/PracticalBayesPisteExt.jl`, because Piste is a weak dependency (see
+# forwarddiff.jl for why). What stays here is the objective it differentiates,
+# which needs no Piste types at all.
 #
-# `_logdensity_call` is closed over as a small callable struct rather than an
-# anonymous closure: a closure capturing these as locals boxes them under trim
-# (`Core.Box`, inferring `Any`), which is precisely the kind of thing that stops
-# a binary from building. See `_PBFDObjective`'s own comment.
-function LogDensityProblems.logdensity_and_gradient(
-    f::LogDensityFunction{M,L,S,<:AutoPBForwardDiff}, θ::AbstractVector
-) where {M<:Model,L<:Layout,S<:NamedTuple}
-    g = similar(θ)
-    obj = _PBFDObjective(f.model, f.layout, f.store)
-    chunk = Val(chunksize(f.adtype))
-    if f.reject_errors
-        try
-            return value_and_gradient!(g, obj, θ, chunk)
-        catch e
-            e isa Union{InterruptException,OutOfMemoryError} && rethrow()
-            return _reject_value(θ), zeros(eltype(θ), length(θ))
-        end
-    end
-    return value_and_gradient!(g, obj, θ, chunk)
-end
-
-# A callable struct, not a closure.
-#
-# `θ -> _logdensity_call(θ, model, layout, store)` would work fine under the
-# JIT, but a closure over mutable-looking locals is exactly what produced
-# `Core.Box`-flavoured verifier errors while getting this to trim. A struct
-# with concrete fields captures the same three values with nothing boxed and
-# every field read statically resolvable.
+# `_PBFDObjective` is a callable struct rather than an anonymous closure ON
+# PURPOSE. `θ -> _logdensity_call(θ, model, layout, store)` works fine under the
+# JIT, but a closure over locals is what produced `Core.Box`-flavoured verifier
+# errors while getting this to trim — every captured field inferring as `Any`.
+# A struct with concrete fields captures the same three values with nothing
+# boxed and every field read statically resolvable.
 struct _PBFDObjective{M<:Model,L<:Layout,S<:NamedTuple}
     model::M
     layout::L

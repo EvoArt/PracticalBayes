@@ -47,6 +47,23 @@ chain = sample(Random.default_rng(), m, NUTS(0.8), 1000; adtype=AutoForwardDiff(
 - MAP/MLE/Laplace tools with optional Optimization.jl extension.
 - Float32 performance path for parameter-heavy models.
 - AD backend flexibility via DifferentiationInterface.
+- **Trimmable models**: compile a model to a standalone native binary with
+  `juliac --trim=safe` — a few MB, no Julia install needed at the target, and
+  milliseconds to start instead of JIT latency. This needs an AD backend whose
+  derivative code exists as ordinary compiled Julia, which rules out every
+  established package (they each build it at runtime, via a config, a thunk, an
+  interpreter, or `eval`). [Piste.jl](https://github.com/EvoArt/Piste.jl)
+  provides one: `import Piste` and pass `AutoPBForwardDiff()`. Forward mode, so
+  reverse mode still wins on parameter-heavy models — reach for it when you
+  want a binary. Requires Julia 1.12+; Piste is a weak dependency, so nothing
+  changes for anyone who is not trimming.
+- **`depends=` annotations for Gibbs**: `@addlogprob! expr depends=(:a, :b)`
+  tells the evaluator which variables a term actually involves, so a Gibbs block
+  owning none of them skips it entirely. Exact, not approximate — but only if
+  the annotation is right, and under-declaring fails SILENTLY (the block’s
+  gradient quietly loses a contribution). `check_depends` is the guard: it
+  compares each block’s gradient as written against the same gradient with
+  nothing skipped, so the hint is verified rather than trusted.
 
 ## Benchmark summary (auto-updated)
 

@@ -34,6 +34,10 @@ using Distributions: Normal, Exponential, MvNormal
 using LinearAlgebra: I, Diagonal
 using ADTypes: AutoForwardDiff
 using PracticalBayes: chunksize
+# `import Piste` is what activates PracticalBayesPisteExt, which carries the
+# gradient method. Piste is a weak dependency because `--trim` (the reason this
+# backend exists) needs Julia 1.12+, so 1.10 users are not made to install it.
+import Piste
 using Piste: gradient!, value_and_gradient!
 import LogDensityProblems
 using Random: Xoshiro
@@ -139,4 +143,12 @@ end
     _, g = LogDensityProblems.logdensity_and_gradient(ldf, θ0)
     @test length(g) == layout.dim
     @test all(isfinite, g)
+end
+
+@testset "forwarddiff.jl: extension is what supplies the gradient" begin
+    # The backend TYPE lives in the package proper, so it can always be named
+    # and `chunksize` always works even without Piste loaded...
+    @test AutoPBForwardDiff(chunk=4) isa AutoPBForwardDiff{4}
+    # ...and with Piste imported (above), the extension is live.
+    @test Base.get_extension(PracticalBayes, :PracticalBayesPisteExt) !== nothing
 end
