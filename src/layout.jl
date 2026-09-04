@@ -295,6 +295,27 @@ function build_layout(
     # `static=true` freezes the records into a Tuple so their concrete types
     # survive into the compiled code. See the note on `Layout` above for why
     # this is opt-in rather than the default.
+    #
+    # A static layout is the shape used when BAKING a layout into a compiled
+    # binary (`juliac --trim`), because a trimmed program cannot call
+    # build_layout at all — it must hold the layout as a `const` evaluated at
+    # precompile time. That makes an unseeded `rng` a genuine correctness trap
+    # rather than a style question: `θ0` below is DRAWN from `rng`, so with the
+    # default RNG the baked-in starting point differs on every build. The same
+    # source then produces binaries that start the sampler somewhere different
+    # each time — and this is not hypothetical, one unlucky draw produced a
+    # binary with 500/500 divergences from source that was clean under the JIT.
+    #
+    # Only a warning, not an error: `static=true` is also reachable from
+    # ordinary interactive use via `@static_model`, where a random start is
+    # correct and expected. Note this concerns only where the chain STARTS —
+    # the sampling itself (momenta, accept/reject) is unaffected and remains
+    # fully stochastic, so seeding here does not make inference deterministic.
+    if static && rng === Random.default_rng()
+        @warn """
+              build_layout(...; static=true) with the default RNG: θ0 is drawn               randomly, so a layout frozen into a compiled binary will differ               between builds. Pass an explicit seeded RNG (e.g.               `rng = Random.Xoshiro(1234)`) if this layout is destined for a               `--trim` build. Affects only the sampler's starting point, not               the randomness of sampling itself.
+              """ maxlog=1
+    end
     meta = static ? Tuple(records) : records
     layout = Layout(slots, offset, meta, untracked_names)
     return layout, θ0, store0

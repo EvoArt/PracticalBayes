@@ -81,6 +81,14 @@ function LogDensityFunction(
         prep = GradModePrep(plan, GradModeWorkspace{eltype(θ0)}(N))
         return LogDensityFunction(model, layout, store, adtype, prep, reject_errors)
     end
+    if adtype isa AutoPBForwardDiff
+        # Our own forward-mode duals (forwarddiff.jl). No preparation of any
+        # kind: there is no tape to trace and no config to build — the chunk
+        # width is a type parameter and the seeds are constructed per call.
+        # That absence IS the feature, since a runtime-built config is exactly
+        # what stops ForwardDiff from surviving `juliac --trim`.
+        return LogDensityFunction(model, layout, store, adtype, nothing, reject_errors)
+    end
     # `DI.prepare_gradient` traces/compiles the AD backend's tape or config
     # ONCE against `θ0`'s type and length; every later `logdensity_and_gradient`
     # call reuses `prep` instead of re-preparing, which matters a lot for
@@ -167,6 +175,49 @@ LogDensityProblems.dimension(f::LogDensityFunction) = f.layout.dim
 # our `logdensity_and_gradient` method directly instead of re-differentiating.
 function LogDensityProblems.capabilities(::Type{<:LogDensityFunction{<:Any,<:Any,<:Any,AD}}) where {AD}
     return AD === Nothing ? LogDensityProblems.LogDensityOrder{0}() : LogDensityProblems.LogDensityOrder{1}()
+end
+
+# AutoPBForwardDiff: our own forward-mode duals (forwarddiff.jl), the backend
+# that survives `juliac --trim`. Same contract as every other path here —
+# returns `(value, gradient)` with the same `reject_errors` semantics — so a
+# sampler cannot tell which backend it is talking to.
+#
+# `_logdensity_call` is closed over as a small callable struct rather than an
+# anonymous closure: a closure capturing these as locals boxes them under trim
+# (`Core.Box`, inferring `Any`), which is precisely the kind of thing that stops
+# a binary from building. See `_PBFDObjective`'s own comment.
+function LogDensityProblems.logdensity_and_gradient(
+    f::LogDensityFunction{M,L,S,<:AutoPBForwardDiff}, θ::AbstractVector
+) where {M<:Model,L<:Layout,S<:NamedTuple}
+    g = similar(θ)
+    obj = _PBFDObjective(f.model, f.layout, f.store)
+    chunk = Val(chunksize(f.adtype))
+    if f.reject_errors
+        try
+            return value_and_gradient!(g, obj, θ, chunk)
+        catch e
+            e isa Union{InterruptException,OutOfMemoryError} && rethrow()
+            return _reject_value(θ), zeros(eltype(θ), length(θ))
+        end
+    end
+    return value_and_gradient!(g, obj, θ, chunk)
+end
+
+# A callable struct, not a closure.
+#
+# `θ -> _logdensity_call(θ, model, layout, store)` would work fine under the
+# JIT, but a closure over mutable-looking locals is exactly what produced
+# `Core.Box`-flavoured verifier errors while getting this to trim. A struct
+# with concrete fields captures the same three values with nothing boxed and
+# every field read statically resolvable.
+struct _PBFDObjective{M<:Model,L<:Layout,S<:NamedTuple}
+    model::M
+    layout::L
+    store::S
+end
+
+@inline function (o::_PBFDObjective)(θ)
+    return _logdensity_call(θ, o.model, o.layout, o.store)
 end
 
 # GradMode: the closed-form path. Same contract as the DI path below (returns

@@ -30,6 +30,7 @@ include("compiler.jl")
 # `@model` is a later, separate step gated on a runtime gradient check.
 include("gradmode_recognize.jl")
 include("gradmode_codegen.jl")
+include("forwarddiff.jl")
 include("logdensity.jl")
 include("optimize.jl")
 include("latent.jl")
@@ -53,6 +54,7 @@ export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction
 export GradMode, check_gradmode
+export AutoPBForwardDiff
 export AbstractEvalMode, TraceMode, EvalMode, PriorMode, FixedMode, PointwiseMode
 export evaluate, paramtype
 export maximum_a_posteriori, maximum_likelihood, laplace_approximation
