@@ -138,7 +138,28 @@ function gradmode_value_and_gradient!(plan::GLMPlan, layout, args, theta, g, ws)
     # fix is to stop using a Dict: the name set is fixed at recognition time
     # (`plan.priors`), so these could live in a NamedTuple or a
     # position-indexed Vector, concrete by construction rather than by
-    # assertion. Not done yet; see trimtest/HANDOVER.md.
+    # assertion. Would also need a recognizer-side rejection for any site whose
+    # linked representation is not scalar-or-vector, so the invariant is
+    # ENFORCED rather than assumed — skipping that half is how the
+    # vector-hyper-location bug (e31e113) happened in the first place.
+    #
+    # PARKED, deliberately (decision 2026-09-04). The only thing it unlocks is
+    # `--trim=safe` for GradMode-recognized models, and trimming already works
+    # today for anyone willing to hand-write a gradient (204 -> 0 errors, 2.9 MB
+    # binary matching the JIT to 16 digits — see trimtest/FINDINGS.md). So this
+    # is convenience, not capability. The dispatch cost it also removes is
+    # small: profiling puts the closed form at 79.6% BLAS `gemv!` at
+    # N=20000/P=200, so the prior arithmetic is not where the time goes.
+    #
+    # Do NOT gate this on `@static_model` if it is ever picked up. That was
+    # considered and rejected: `vals` threads through ten functions, so a
+    # conditional version means either duplicating the whole gradient path (two
+    # copies that can drift, in the file where a mistake silently biases a
+    # posterior) or parameterising the container — which IS the general fix, at
+    # which point gating buys nothing. `@static_model` is opt-in because it
+    # costs ~5ms compile time per site record; this has no such tradeoff and is
+    # strictly better for every model, so it should be unconditional or not at
+    # all. See trimtest/HANDOVER.md for the trim-side context.
     vals = Dict{Symbol,Any}()
     lp = zero(T)
     for ps in plan.priors
