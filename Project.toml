@@ -69,6 +69,7 @@ Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
 Optimization = "7f7a1694-90dd-40f0-9382-eb1efda571ba"
 OptimizationOptimJL = "36348300-93cb-4f02-beb5-3c3902f8871e"
+Piste = "f69a1a94-130c-4fa4-b8d2-e36d656cbe66"
 PolyesterForwardDiff = "98d1487c-24ca-40b6-b7ab-df2af84e126b"
 ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
 StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
@@ -78,4 +79,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
 
 [targets]
-test = ["CUDA", "Enzyme", "Mooncake", "Optimization", "OptimizationOptimJL", "PolyesterForwardDiff", "ReverseDiff", "StableRNGs", "Statistics", "StatsFuns", "Test", "Turing"]
+test = ["CUDA", "Enzyme", "Mooncake", "Optimization", "OptimizationOptimJL", "Piste", "PolyesterForwardDiff", "ReverseDiff", "StableRNGs", "Statistics", "StatsFuns", "Test", "Turing"]
