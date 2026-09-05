@@ -16,3 +16,4 @@ later considerations.md
 # Benchmark sweep figures live under figures/ locally; the tracked ones are
 # regenerated/committed by the benchmark CI, not by hand.
 figures/
+ad_worklog.md

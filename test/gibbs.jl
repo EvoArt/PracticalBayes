@@ -435,3 +435,37 @@ end
         @addlogprob! 0.0 wrongkw=(:a,)         # wrong keyword name
     end
 end
+
+@testset "gibbs.jl: multi-block Gibbs with a VECTOR parameter (regression)" begin
+    # Any multi-block Gibbs with a vector-valued parameter used to die on its
+    # SECOND sweep with `DifferentiationInterface.PreparationMismatchError`.
+    #
+    # The mechanism sat between two deliberate behaviours. `invlink` builds its
+    # values through `_linked_view`, which must return a `Base.SubArray` (see
+    # its docstring — PolyesterForwardDiff), so a vector site came back as a
+    # VIEW. That NamedTuple becomes the other block's `store`, which is handed
+    # to `DI.prepare_gradient` as a `DI.Constant` — and that prep is cached and
+    # deliberately never rebuilt. So sweep 1 prepared against `Vector{Float64}`
+    # initial values, sweep 2 supplied a `SubArray`, and DI's strict type check
+    # threw.
+    #
+    # Neither behaviour was wrong, which is why the fix is at the boundary:
+    # `invlink` materialises. This test is the cheapest possible statement of
+    # the bug — two blocks, one scalar, one `filldist` vector, five sweeps.
+    @model function _vec_block_model(y)
+        mu ~ Normal(0, 1)
+        z ~ filldist(Normal(0, 1), 3)
+        y ~ Normal(mu + sum(z), 1.0)
+    end
+
+    m = _vec_block_model(1.5)
+    spl = Gibbs(:mu => NUTS(0.8), :z => NUTS(0.8))
+    chn = AbstractMCMC.sample(StableRNG(7), m, spl, 5; progress=false)
+    @test size(chn, 1) == 5
+
+    # And the reported draws must be plain arrays, not views — that IS the fix.
+    layout, θ0, _ = build_layout(m)
+    nt = invlink(layout, θ0)
+    @test nt.z isa Vector{Float64}
+    @test !(nt.z isa SubArray)
+end

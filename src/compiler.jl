@@ -143,9 +143,30 @@ macro model(expr)
     # macro call site's environment rather than into PracticalBayes' own
     # module scope — necessary so that e.g. `Normal` in the user's model body
     # resolves via the user's `using Distributions`, not ours.
+    # GradMode (gradmode_recognize.jl): try to recognize this model body as a
+    # GLM with a closed-form gradient. This runs at MACRO-EXPANSION time on the
+    # ORIGINAL body (before tilde rewriting), so it costs nothing at run time
+    # and nothing on the evaluation path.
+    #
+    # Recognition failing is the normal, expected case and is NOT an error —
+    # `gradmode_plan` then returns `nothing` and everything falls back to
+    # general AD. The plan is attached as a METHOD on the generated evaluator
+    # rather than a field on `Model` so that no existing `Model` construction
+    # site changes and the plan stays a compile-time constant.
+    plan = try
+        recognize_glm(def[:body], argnames)
+    catch
+        # A recognizer bug must never break `@model` itself. Swallowing here
+        # means the worst case is "no fast path", never "your model won't
+        # compile".
+        nothing
+    end
+    plan_fn = :(PracticalBayes.gradmode_plan(::typeof($(eval_name))) = $(QuoteNode(plan)))
+
     return esc(quote
         $(eval_fn)
         $(ctor_fn)
+        $(plan_fn)
     end)
 end
 
@@ -386,9 +407,28 @@ end
 # macrocall's `args` are `(macro_name, __source__::LineNumberNode, actual_args...)`,
 # so the expression itself is always `x.args[3]` for the one-argument form
 # this macro supports.
+# The final component of a (possibly qualified) macro name:
+# `@addlogprob!` and `PracticalBayes.@addlogprob!` both -> `Symbol("@addlogprob!")`.
+function _macroname(ex)
+    ex isa Symbol && return ex
+    if ex isa Expr && ex.head == :. && length(ex.args) == 2
+        q = ex.args[2]
+        q isa QuoteNode && q.value isa Symbol && return q.value
+        q isa Symbol && return q
+    end
+    return nothing
+end
+
 function _rewrite_addlogprob(body)
     return postwalk(body) do x
-        if x isa Expr && x.head == :macrocall && x.args[1] == Symbol("@addlogprob!")
+        # The macro name may be written QUALIFIED (`PracticalBayes.@addlogprob!`
+        # / `PB.@addlogprob!`), in which case `args[1]` is an `Expr`
+        # (`PB.var"@addlogprob!"`) rather than the bare Symbol. Matching only
+        # the bare Symbol left the qualified form un-rewritten, so it reached
+        # the `@addlogprob!` stub at run time and raised "can only be used
+        # inside an @model function body" — inside an @model body. Compare the
+        # final component instead, which handles both spellings.
+        if x isa Expr && x.head == :macrocall && _macroname(x.args[1]) == Symbol("@addlogprob!")
             # args are (macro_name, LineNumberNode, expr[, depends=(...)])
             args = x.args[3:end]
             isempty(args) && error("`@addlogprob!` takes at least one expression, got: $x")
@@ -478,3 +518,58 @@ function _rewrite_returns(body)
         end
     end
 end
+
+"""
+    @static_model function name(args...) ... end
+
+Identical to [`@model`](@ref), but models defined this way default to a
+`Layout` whose `meta` is a `Tuple` rather than a `Vector`, which is what
+`juliac --trim` needs.
+
+The generated evaluator is byte-for-byte the same as `@model`'s — only the
+default layout differs. `build_layout(m; static=false)` on a static model, or
+`static=true` on an ordinary one, both work; the macro only picks the default.
+
+Use this when the model will be compiled into a standalone binary. The cost is
+compile time, roughly 5 ms per site record, so a model whose indexed family is
+written as a loop pays for every element:
+
+    @static_model function slow(y, n)
+        for i in 1:n
+            x[i] ~ Normal(0, 1)      # n records -> n * ~5 ms
+        end
+    end
+
+    @static_model function fast(y, n)
+        x ~ MvNormal(zeros(n), 1.0)  # ONE record regardless of n
+    end
+
+Both are the same model; only the first pays. Distinct distribution *types*
+cost nothing — it is the record count that matters.
+"""
+macro static_model(expr)
+    # The evaluator and constructor are exactly what `@model` builds; the only
+    # difference is the default `static` flag recorded on the Model, which
+    # `build_layout` reads. Delegating rather than duplicating keeps the two
+    # macros from drifting apart.
+    inner = macroexpand(__module__, :(@model $expr))
+    def = splitdef(expr)
+    # The trait is attached to the EVALUATOR (`_name_eval`), not the
+    # user-facing constructor: `build_layout` receives a `Model`, whose `f`
+    # field holds the evaluator, so that is the function it can dispatch on.
+    eval_name = Symbol("_", def[:name], "_eval")
+    return esc(quote
+        $(inner)
+        PracticalBayes.prefers_static_layout(::typeof($eval_name)) = true
+        $(def[:name])
+    end)
+end
+
+"""
+    prefers_static_layout(f) -> Bool
+
+Whether a model constructor was defined with [`@static_model`](@ref), and so
+should default to a tuple-valued `Layout.meta`. Ordinary `@model` definitions
+return `false`.
+"""
+prefers_static_layout(::Any) = false

@@ -8,13 +8,26 @@ using Bijectors: with_logabsdet_jacobian
 Metadata captured once during `TraceMode` for a single top-level model
 variable. Never touched on the hot (`EvalMode`) path.
 """
-struct SiteRecord
+struct SiteRecord{D,V}
     name::Symbol
-    dist_exemplar::Any  # a representative Distribution instance for this site
+    dist_exemplar::D    # a representative Distribution instance for this site
     linked_len::Int     # length of the unconstrained ("linked") representation
     role::Symbol        # :observed, :param, or :latent
-    init_val::Any       # constrained-space initial value
+    init_val::V         # constrained-space initial value
 end
+
+# `D` and `V` are parameters rather than `Any` so that a record's field reads
+# resolve statically. With `dist_exemplar::Any`, `to_linked_vec(rec.dist_exemplar)`
+# is an unresolved call under `juliac --trim`, and because `Any` can hold an
+# `Expr` the compiler must also retain Julia's entire recursive expression
+# printer: on a two-site model that single field produced 204 verifier errors,
+# 114 of them inside `show`.
+#
+# Records are collected into a `Vector{SiteRecord}` during discovery (which is
+# dynamic by design — see `build_layout`), so they are still boxed there. Only
+# `build_layout(...; static=true)` freezes them into a `Tuple`, where the
+# concrete parameters survive.
+const AnySiteRecord = SiteRecord{<:Any,<:Any}
 
 abstract type AbstractSlot end
 
@@ -60,7 +73,7 @@ for variables belonging to other blocks in a Gibbs sweep. Values behind a
 struct ValueSlot <: AbstractSlot end
 
 """
-    Layout{S<:NamedTuple}
+    Layout{S<:NamedTuple,M}
 
 `slots`: NamedTuple mapping variable name -> `AbstractSlot`, isbits so that
 `getproperty(layout.slots, name)` is fully inferred and the assume-path branch
@@ -77,12 +90,30 @@ reporting-level flag: `EvalMode`/`tilde.jl` never look at it, so an untracked
 site's gradient contribution and posterior correlation with everything else
 is completely unaffected.
 """
-struct Layout{S<:NamedTuple}
+struct Layout{S<:NamedTuple,M}
     slots::S
     dim::Int
-    meta::Vector{SiteRecord}
+    meta::M
     untracked::Set{Symbol}
 end
+
+# `meta` is `Vector{SiteRecord}` by default and a `Tuple` of `SiteRecord`s under
+# `build_layout(...; static=true)`.
+#
+# The difference matters only for `juliac --trim`. `SiteRecord.dist_exemplar` is
+# `::Any`, so `to_linked_vec(rec.dist_exemplar)` is an unresolved call: trim
+# cannot see which method it lands in, and because `Any` could hold an `Expr` it
+# also has to retain Julia's whole recursive expression printer. On a two-site
+# model that one field produced 204 verifier errors, 114 of them inside `show`.
+#
+# A `Tuple` keeps each record's concrete type, so the field reads resolve. It is
+# not the default because it costs roughly 5 ms of compile time per record: a
+# model whose indexed family is written as a loop (`for i in 1:400; x[i] ~ ...`)
+# keeps one record per element and would pay ~2 s. Written as an array
+# distribution the same model is three records and pays nothing. Measured:
+# distinct distribution TYPES cost nothing (2 to 30 types is if anything cheaper
+# than the Vector); record COUNT is what costs.
+const VectorLayout{S} = Layout{S,<:Vector{<:SiteRecord}}
 
 """
     build_layout(model; flat=nothing, values=(), untracked=(), rng=Random.default_rng(), init=NamedTuple()) -> (layout, θ0, store0)
@@ -134,6 +165,7 @@ function build_layout(
     rng=Random.default_rng(),
     init=NamedTuple(),
     T::Type{<:Real}=Float64,
+    static::Bool=prefers_static_layout(model.f),
 )
     # Step 1: run the model exactly once under TraceMode. Every tilde method
     # specialized on TraceMode (tilde.jl) pushes a SiteRecord as it goes, so
@@ -260,7 +292,32 @@ function build_layout(
             "`untracked` name `$name` is not one of this layout's flat-vector sites: $(seen_order)",
         ))
     end
-    layout = Layout(slots, offset, records, untracked_names)
+    # `static=true` freezes the records into a Tuple so their concrete types
+    # survive into the compiled code. See the note on `Layout` above for why
+    # this is opt-in rather than the default.
+    #
+    # A static layout is the shape used when BAKING a layout into a compiled
+    # binary (`juliac --trim`), because a trimmed program cannot call
+    # build_layout at all — it must hold the layout as a `const` evaluated at
+    # precompile time. That makes an unseeded `rng` a genuine correctness trap
+    # rather than a style question: `θ0` below is DRAWN from `rng`, so with the
+    # default RNG the baked-in starting point differs on every build. The same
+    # source then produces binaries that start the sampler somewhere different
+    # each time — and this is not hypothetical, one unlucky draw produced a
+    # binary with 500/500 divergences from source that was clean under the JIT.
+    #
+    # Only a warning, not an error: `static=true` is also reachable from
+    # ordinary interactive use via `@static_model`, where a random start is
+    # correct and expected. Note this concerns only where the chain STARTS —
+    # the sampling itself (momenta, accept/reject) is unaffected and remains
+    # fully stochastic, so seeding here does not make inference deterministic.
+    if static && rng === Random.default_rng()
+        @warn """
+              build_layout(...; static=true) with the default RNG: θ0 is drawn               randomly, so a layout frozen into a compiled binary will differ               between builds. Pass an explicit seeded RNG (e.g.               `rng = Random.Xoshiro(1234)`) if this layout is destined for a               `--trim` build. Affects only the sampler's starting point, not               the randomness of sampling itself.
+              """ maxlog=1
+    end
+    meta = static ? Tuple(records) : records
+    layout = Layout(slots, offset, meta, untracked_names)
     return layout, θ0, store0
 end
 
@@ -272,6 +329,11 @@ names in `layout`) to the flat unconstrained vector, using each site's
 `dist_exemplar` from `layout.meta` for the transform. Used by Gibbs to
 refresh a component sampler's state after other blocks moved.
 """
+# Collapse a view to a plain array. A scalar (or anything already materialised)
+# passes through untouched, so this costs nothing on the common path.
+@inline _materialize(x::SubArray) = collect(x)
+@inline _materialize(x) = x
+
 function link(layout::Layout, nt::NamedTuple)
     chunks = Vector{Float64}[]
     # Re-derive the by-name grouping from `layout.meta` (this is cheap, O(number
@@ -334,11 +396,28 @@ function invlink(layout::Layout, θ::AbstractVector; include_untracked=false)
             # case, but keeping every bijector call site on the one helper means
             # the invariant holds if that ever changes.
             x, _ = with_logabsdet_jacobian(from_linked_vec(recs[1].dist_exemplar), _linked_view(θ, slot.range))
-            push!(pairs_out, name => x)
+            # `_materialize` is load-bearing, not tidiness. A bijector fed a
+            # `SubArray` hands one back, so a vector-valued site would leave a
+            # VIEW in the returned NamedTuple. That NamedTuple becomes a Gibbs
+            # block's `store` (gibbs.jl), and `store` is passed to
+            # `DI.prepare_gradient` as a `DI.Constant` -- whose cached prep is
+            # deliberately never rebuilt. The first sweep prepares against the
+            # `Vector{Float64}` initial values and every later sweep supplies a
+            # `SubArray`, so DifferentiationInterface's strict type check throws
+            # `PreparationMismatchError` and ANY multi-block Gibbs with a
+            # vector-valued parameter dies on its second sweep.
+            #
+            # Fixing it here rather than at either of the two deliberate
+            # behaviours it falls between: `_linked_view` must return a
+            # `Base.SubArray` (see its docstring -- PolyesterForwardDiff), and
+            # caching the prep is the point of `GibbsSamplerSub`. `invlink`
+            # reports constrained draws for consumption, not an AD hot path, so
+            # materialising is free here and keeps the type stable downstream.
+            push!(pairs_out, name => _materialize(x))
         else # FlatArraySlot
             elems = map(1:length(recs)) do i
                 x, _ = with_logabsdet_jacobian(from_linked_vec(recs[i].dist_exemplar), _linked_view(θ, elem_range(slot, i)))
-                x
+                _materialize(x)
             end
             push!(pairs_out, name => elems)
         end

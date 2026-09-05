@@ -1,0 +1,61 @@
+Precompiling packages...
+  20952.6 ms  ✓ PBTrim
+  1 dependency successfully precompiled in 83 seconds. 163 already precompiled.
+  9 dependencies precompiled but different versions are currently loaded (Base64, Dates, JuliaSyntaxHighlighting, Logging, Markdown, Printf, StyledStrings, TOML and UUIDs). Restart julia to access the new versions. Otherwise, 87 dependents of these packages may trigger further precompilation to work with the unexpected versions.
+Compiling...
+✓ Compiling...
+- PackageCompiler: bundling libraries
+- PackageCompiler: bundling artifacts (0/2): 
+PackageCompiler: bundled libraries:
+  ├── Base:
+  │    ├── libatomic-1.dll - 260.742 KiB
+  │    ├── libdSFMT.dll - 111.797 KiB
+  │    ├── libgcc_s_seh-1.dll - 949.055 KiB
+  │    ├── libgfortran-5.dll - 11.531 MiB
+  │    ├── libgmp-10.dll - 1.051 MiB
+  │    ├── libgmp.dll - 1.051 MiB
+  │    ├── libgmpxx-4.dll - 290.469 KiB
+  │    ├── libgmpxx.dll - 290.469 KiB
+  │    ├── libgomp-1.dll - 1.679 MiB
+  │    ├── libjulia-internal.dll - 14.515 MiB
+  │    ├── libmpfr-6.dll - 2.502 MiB
+  │    ├── libmpfr.dll - 2.502 MiB
+  │    ├── libopenlibm.dll - 532.062 KiB
+  │    ├── libpcre2-16-0.dll - 701.180 KiB
+  │    ├── libpcre2-16.dll - 701.180 KiB
+  │    ├── libpcre2-32-0.dll - 669.219 KiB
+  │    ├── libpcre2-32.dll - 669.219 KiB
+  │    ├── libpcre2-8-0.dll - 770.297 KiB
+  │    ├── libpcre2-8.dll - 770.297 KiB
+  │    ├── libpcre2-posix-3.dll - 106.930 KiB
+  │    ├── libquadmath-0.dll - 1.146 MiB
+  │    ├── libssp-0.dll - 142.469 KiB
+  │    ├── libstdc++-6.dll - 25.058 MiB
+  │    ├── libuv-2.dll - 981.422 KiB
+  │    ├── libwinpthread-1.dll - 327.375 KiB
+  │    ├── libz.dll - 213.070 KiB
+  │    ├── libjulia.dll - 229.562 KiB
+  ├── Stdlibs:
+  │   ├── SuiteSparse_jll
+  │   │   ├── libamd.dll - 146.914 KiB
+  │   │   ├── libbtf.dll - 107.344 KiB
+  │   │   ├── libcamd.dll - 151.602 KiB
+  │   │   ├── libccolamd.dll - 149.352 KiB
+  │   │   ├── libcholmod.dll - 2.382 MiB
+  │   │   ├── libcolamd.dll - 131.875 KiB
+  │   │   ├── libklu.dll - 320.758 KiB
+  │   │   ├── libklu_cholmod.dll - 105.617 KiB
+  │   │   ├── libldl.dll - 106.273 KiB
+  │   │   ├── librbio.dll - 159.250 KiB
+  │   │   ├── libspqr.dll - 615.164 KiB
+  │   │   ├── libsuitesparseconfig.dll - 117.031 KiB
+  │   │   ├── libumfpack.dll - 1.006 MiB
+  │   ├── libblastrampoline_jll
+  │   │   ├── libblastrampoline-5.dll - 2.703 MiB
+  │   ├── OpenBLAS_jll
+  │   │   ├── libopenblas64_.dll - 37.786 MiB
+  Total library file size: 115.486 MiB
+PackageCompiler: bundled artifacts:
+  ├── OpenSpecFun_jll - 728.003 KiB
+  └── Rmath_jll - 784.823 KiB
+  Total artifact file size: 1.477 MiB

@@ -61,7 +61,16 @@ end
         @eval import Enzyme
         layout, θ0, store0, ref_grad = _reference_grad()
         m = ad_test_model(2.0)
-        ldf = LogDensityFunction(m, layout, store0, AutoEnzyme(); θ0=θ0)
+        # `set_runtime_activity` is REQUIRED here, not a tuning knob. The model
+        # closure carries the `Layout` (whose `meta` is a `Vector{SiteRecord}`
+        # with `::Any` fields); Enzyme cannot prove those are inactive, and a
+        # bare `AutoEnzyme()` fails with
+        #   EnzymeRuntimeActivityError: Detected potential need for runtime
+        #   activity. Julia value causing error: Unknown object of type
+        #   Vector{PracticalBayes.SiteRecord}
+        # `benchmarks/sweep.jl` already does this for the same reason.
+        enzyme_mode = @eval Enzyme.set_runtime_activity(Enzyme.Reverse)
+        ldf = LogDensityFunction(m, layout, store0, AutoEnzyme(; mode=enzyme_mode); θ0=θ0)
         _, grad = LogDensityProblems.logdensity_and_gradient(ldf, θ0)
         @test grad ≈ ref_grad atol = 1e-8
     else

@@ -25,6 +25,12 @@ include("layout.jl")
 include("model.jl")
 include("tilde.jl")
 include("compiler.jl")
+# Stage 2 GLM recognizer. Loaded so it is testable, but INERT: nothing in the
+# package calls `recognize_glm` and it generates no code. Wiring it into
+# `@model` is a later, separate step gated on a runtime gradient check.
+include("gradmode_recognize.jl")
+include("gradmode_codegen.jl")
+include("forwarddiff.jl")
 include("logdensity.jl")
 include("optimize.jl")
 include("latent.jl")
@@ -32,17 +38,23 @@ include("conjugate.jl")
 include("save_states.jl")
 include("gibbs.jl")
 include("check_depends.jl")
+include("jittered_nsteps.jl")
 include("nuts_to_hmc.jl")
 include("adaptive_hmc.jl")
 include("progress.jl")
+include("static_hmc.jl")
+include("static_hmc_api.jl")
 include("sample.jl")
 include("predict.jl")
 
-export @model, Model, condition, decondition, @addlogprob!
-export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit
+export @model, @static_model, Model, condition, decondition, @addlogprob!
+export static_nuts, static_hmc, static_gradient, StaticHMCResult
+export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit, BernoulliCLogLog
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction
+export GradMode, check_gradmode
+export AutoPBForwardDiff
 export AbstractEvalMode, TraceMode, EvalMode, PriorMode, FixedMode, PointwiseMode
 export evaluate, paramtype
 export maximum_a_posteriori, maximum_likelihood, laplace_approximation
@@ -54,7 +66,7 @@ export check_depends, DependsReport
 export SaveToChain, SaveToBuffer, SaveToDisk, write_state_chunk!, read_states
 export SymChain
 # Re-exported so `using PracticalBayes` is self-contained for running inference:
-export sample, HMC, NUTS, HMCDA, NUTSthenHMC, AdaptiveHMC
+export sample, HMC, NUTS, HMCDA, NUTSthenHMC, AdaptiveHMC, JitteredNSteps
 export default_progress
 export returned, predict, chain_draws, loglikelihood_at, pointwise_loglikelihoods
 
