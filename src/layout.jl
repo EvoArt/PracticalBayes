@@ -329,6 +329,11 @@ names in `layout`) to the flat unconstrained vector, using each site's
 `dist_exemplar` from `layout.meta` for the transform. Used by Gibbs to
 refresh a component sampler's state after other blocks moved.
 """
+# Collapse a view to a plain array. A scalar (or anything already materialised)
+# passes through untouched, so this costs nothing on the common path.
+@inline _materialize(x::SubArray) = collect(x)
+@inline _materialize(x) = x
+
 function link(layout::Layout, nt::NamedTuple)
     chunks = Vector{Float64}[]
     # Re-derive the by-name grouping from `layout.meta` (this is cheap, O(number
@@ -391,11 +396,28 @@ function invlink(layout::Layout, θ::AbstractVector; include_untracked=false)
             # case, but keeping every bijector call site on the one helper means
             # the invariant holds if that ever changes.
             x, _ = with_logabsdet_jacobian(from_linked_vec(recs[1].dist_exemplar), _linked_view(θ, slot.range))
-            push!(pairs_out, name => x)
+            # `_materialize` is load-bearing, not tidiness. A bijector fed a
+            # `SubArray` hands one back, so a vector-valued site would leave a
+            # VIEW in the returned NamedTuple. That NamedTuple becomes a Gibbs
+            # block's `store` (gibbs.jl), and `store` is passed to
+            # `DI.prepare_gradient` as a `DI.Constant` -- whose cached prep is
+            # deliberately never rebuilt. The first sweep prepares against the
+            # `Vector{Float64}` initial values and every later sweep supplies a
+            # `SubArray`, so DifferentiationInterface's strict type check throws
+            # `PreparationMismatchError` and ANY multi-block Gibbs with a
+            # vector-valued parameter dies on its second sweep.
+            #
+            # Fixing it here rather than at either of the two deliberate
+            # behaviours it falls between: `_linked_view` must return a
+            # `Base.SubArray` (see its docstring -- PolyesterForwardDiff), and
+            # caching the prep is the point of `GibbsSamplerSub`. `invlink`
+            # reports constrained draws for consumption, not an AD hot path, so
+            # materialising is free here and keeps the type stable downstream.
+            push!(pairs_out, name => _materialize(x))
         else # FlatArraySlot
             elems = map(1:length(recs)) do i
                 x, _ = with_logabsdet_jacobian(from_linked_vec(recs[i].dist_exemplar), _linked_view(θ, elem_range(slot, i)))
-                x
+                _materialize(x)
             end
             push!(pairs_out, name => elems)
         end
