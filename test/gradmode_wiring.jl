@@ -137,3 +137,90 @@ end
 end
 
 end  # gradmode wiring
+
+@testset "gradmode: bounded/positive priors keep their bijector Jacobian" begin
+    # Two silent-wrong-gradient bugs, both found when the closed form became the
+    # DEFAULT for recognized models rather than opt-in. Both produced correct-
+    # looking output with no error, which is the failure mode this file exists
+    # to prevent.
+    #
+    # 1. `Uniform` was on the prior whitelist and was treated as "flat", i.e.
+    #    contributing nothing. It is BOUNDED, so it is sampled through a
+    #    logistic bijector whose log-Jacobian varies with theta. On the
+    #    PosteriorDB GLM_Poisson pattern that gave a gradient 10x and 5x wrong
+    #    and a log-density off by 6.7. It is now rejected by the recognizer.
+    #
+    # 2. `FlatPos` IS still recognized, and `_gm_prior_grad!` returned early for
+    #    flat-like priors -- skipping the bijector chain entirely. Since FlatPos
+    #    is positive (x = exp(z)), that dropped the log-Jacobian's derivative,
+    #    exactly `+1.0`. The density was right to 9e-13 while sigma's gradient
+    #    was short by 1.0.
+
+    @model function _gm_uniform_model(year, C)
+        alpha ~ Uniform(-20, 20)
+        beta1 ~ Uniform(-10, 10)
+        log_lambda := alpha .+ beta1 .* year
+        C .~ LogPoisson.(log_lambda)
+    end
+    # A bounded prior must NOT be claimed by the closed form.
+    year = collect(1.0:10)
+    C = Float64.(rand.(Xoshiro(1), Poisson.(exp.(0.5 .+ 0.1 .* year))))
+    mu = _gm_uniform_model(year, C)
+    @test gradmode_plan(mu.f) === nothing
+
+    # And the model still works, via the general AD fallback.
+    layu, thu, stu = build_layout(mu; init=(; alpha=0.0, beta1=0.1))
+    ldfu = LogDensityFunction(mu, layu, stu, AutoForwardDiff(); θ0=thu)
+    _, gu = LogDensityProblems.logdensity_and_gradient(ldfu, thu)
+    @test all(isfinite, gu)
+
+    @model function _gm_flatpos_model(X, y)
+        k = size(X, 2)
+        beta ~ filldist(Normal(0, 10), k)
+        sigma ~ FlatPos(0.0)
+        y ~ MvNormal(X * beta, sigma^2 * I)
+    end
+    X = randn(Xoshiro(1), 30, 4)
+    y = X * randn(Xoshiro(2), 4) .+ randn(Xoshiro(3), 30) .* 0.5
+    mf = _gm_flatpos_model(X, y)
+    @test gradmode_plan(mf.f) !== nothing          # this one IS recognized
+    layf, thf, stf = build_layout(mf; init=(; sigma=1.0))
+
+    ad = LogDensityFunction(mf, layf, stf, AutoForwardDiff(); θ0=thf, closed_form=false)
+    gm = LogDensityFunction(mf, layf, stf, GradMode(); θ0=thf)
+    vad, gad = LogDensityProblems.logdensity_and_gradient(ad, thf)
+    vgm, ggm = LogDensityProblems.logdensity_and_gradient(gm, thf)
+    @test vgm ≈ vad
+    # The whole point: the sigma component must carry the +1.0 Jacobian term.
+    @test ggm ≈ gad rtol=1e-8
+end
+
+@testset "gradmode: recognized models use the closed form automatically" begin
+    # The closed form is ~9x faster than the fastest general AD on a large
+    # regression, so a recognized model should get it without being asked --
+    # while `closed_form=false` still gives the AD path for checking against.
+    @model function _gm_auto_model(X, y)
+        pT = paramtype(__mode__)
+        k = size(X, 2)
+        beta ~ MvNormal(zeros(pT, k), I)
+        sigma ~ Exponential(one(pT))
+        eta = X * beta
+        y ~ MvNormal(eta, sigma^2 * I)
+    end
+    X = randn(Xoshiro(11), 200, 10)
+    y = X * randn(Xoshiro(12), 10) .+ randn(Xoshiro(13), 200) .* 0.7
+    m = _gm_auto_model(X, y)
+    layout, θ0, store0 = build_layout(m; rng=Xoshiro(20240829))
+
+    auto = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0)
+    @test auto.adtype isa GradMode
+
+    opted_out = LogDensityFunction(m, layout, store0, AutoForwardDiff(); θ0=θ0,
+                                   closed_form=false)
+    @test opted_out.adtype isa AutoForwardDiff
+
+    va, ga = LogDensityProblems.logdensity_and_gradient(auto, θ0)
+    vo, go = LogDensityProblems.logdensity_and_gradient(opted_out, θ0)
+    @test va ≈ vo
+    @test ga ≈ go rtol=1e-8
+end

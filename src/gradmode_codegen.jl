@@ -227,10 +227,14 @@ end
 
 _gm_prior_logpdf(ps::PriorSite, v) = _gm_flatlike(ps.dist) ? 0.0 : logpdf_of(ps, v)
 
-# Flat/FlatPos/Uniform are constant on their support: they contribute nothing
-# to the gradient, and their (improper or constant) log-density contributes
-# nothing that varies with theta.
-_gm_flatlike(d::Symbol) = d in (:Flat, :FlatPos, :Uniform)
+# Flat/FlatPos are constant on their support AND need no bounded transform, so
+# they contribute nothing that varies with theta.
+#
+# `Uniform` USED to be in this list and it was a bug: it is bounded, so it is
+# sampled through a logistic bijector whose log-Jacobian does vary with theta.
+# Treating it as flat dropped that term from both the density and the gradient.
+# It is now rejected by the recognizer instead (see GRADMODE_PRIORS).
+_gm_flatlike(d::Symbol) = d in (:Flat, :FlatPos)
 
 function logpdf_of(ps::PriorSite, v)
     d = ps.dist
@@ -259,7 +263,21 @@ end
 # d(logpdf)/dx for each whitelisted prior, written into g at the slot range.
 # The chain through the bijector is handled by `_gm_bij_chain`.
 function _gm_prior_grad!(g, ps::PriorSite, v, layout, theta)
-    _gm_flatlike(ps.dist) && return nothing
+    # A flat-like prior contributes nothing from its DENSITY -- but if it is
+    # bounded below it is still sampled through a bijector, and that Jacobian's
+    # derivative is a real gradient term.
+    #
+    # This was a bug: returning early here skipped `_gm_add_chained!` entirely,
+    # so `sigma ~ FlatPos(0.0)` lost the `+ 1.0` from `d/dz of z` (the log-
+    # Jacobian of x = exp(z)). Measured on the PosteriorDB blr pattern the
+    # density was right to 9e-13 while sigma's gradient was short by exactly
+    # 1.0 -- correct-looking output, wrong posterior.
+    if _gm_flatlike(ps.dist)
+        _gm_is_positive(ps, layout) &&
+            _gm_add_chained!(g, getproperty(layout.slots, ps.name).range,
+                             zero(v), v, ps, layout)
+        return nothing
+    end
     slot = getproperty(layout.slots, ps.name)
     d = ps.dist
     dv = if d === :Normal

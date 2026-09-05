@@ -57,7 +57,8 @@ the type you intend to sample with (e.g. `zeros(Float32, layout.dim)`) if it's
 not `Float64`.
 """
 function LogDensityFunction(
-    model, layout, store=NamedTuple(), adtype=nothing; θ0=zeros(Float64, layout.dim), reject_errors=false
+    model, layout, store=NamedTuple(), adtype=nothing; θ0=zeros(Float64, layout.dim),
+    reject_errors=false, closed_form=true
 )
     if adtype === nothing
         # order-0: density only, e.g. for a plain Metropolis-Hastings kernel
@@ -80,6 +81,30 @@ function LogDensityFunction(
         N = length(getfield(model.args, plan.response))
         prep = GradModePrep(plan, GradModeWorkspace{eltype(θ0)}(N))
         return LogDensityFunction(model, layout, store, adtype, prep, reject_errors)
+    end
+    # AUTOMATIC CLOSED FORM. If the model was recognized as GLM-shaped at
+    # `@model` expansion time, use the analytic gradient instead of
+    # differentiating it — for ANY backend, not just an explicit `GradMode()`.
+    #
+    # This is worth a lot and is not a micro-optimisation. Measured on the
+    # normal-regression benchmark, gradient time:
+    #
+    #     N=1000 K=50    GradMode  76 us   Mooncake  132 us   Piste tape  222 us
+    #     N=5000 K=200   GradMode 351 us   Mooncake 3118 us   Piste tape 3862 us
+    #
+    # i.e. ~9x faster than the fastest general AD at the large end, because it
+    # does no taping at all: the GLM gradient is `X' * resid`, one BLAS call.
+    # No amount of tuning a tape reaches that, since the tape's mere existence
+    # is the cost — profiling put Mooncake's ENTIRE gradient below the cost of
+    # our forward taping pass alone.
+    #
+    # Opt out with `closed_form=false` when you want the AD path specifically
+    # (e.g. checking the closed form against it, which `check_gradmode` does).
+    if closed_form && !(adtype isa GradMode)
+        gm = _maybe_gradmode(model, store, θ0)
+        if !isempty(gm)
+            return LogDensityFunction(model, layout, store, GradMode(), gm[1], reject_errors)
+        end
     end
     if adtype isa AutoPBForwardDiff
         # Fail HERE, at construction, if the extension is not loaded. Without
@@ -117,6 +142,23 @@ function LogDensityFunction(
     # reverse-mode backends never build a tape node for them).
     prep = DI.prepare_gradient(_logdensity_call, adtype, θ0, DI.Constant(model), DI.Constant(layout), DI.Constant(store))
     return LogDensityFunction(model, layout, store, adtype, prep, reject_errors)
+end
+
+# Does this model qualify for the closed-form gradient? Returns a 1-tuple
+# holding the prep, or an empty tuple — a tuple rather than `Union{Nothing,...}`
+# so the result stays inferable.
+#
+# The three conditions are exactly `GradMode()`'s own: a plan must have been
+# recognized at macro-expansion time, `store` must be empty (the closed form is
+# derived for the whole model at once, so a Gibbs block cannot use it), and the
+# response argument must be present.
+function _maybe_gradmode(model, store, θ0)
+    isempty(store) || return ()
+    plan = gradmode_plan(model.f)
+    plan === nothing && return ()
+    hasproperty(model.args, plan.response) || return ()
+    N = length(getfield(model.args, plan.response))
+    return (GradModePrep(plan, GradModeWorkspace{eltype(θ0)}(N)),)
 end
 
 # True once `import Piste` has activated `ext/PracticalBayesPisteExt.jl`.

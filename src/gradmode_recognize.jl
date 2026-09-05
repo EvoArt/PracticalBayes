@@ -147,7 +147,21 @@ end
 # reachable: they are extremely common as weak priors and are the easiest
 # derivatives in the set.
 const GRADMODE_PRIORS = Set([
-    :Normal, :MvNormal, :Exponential, :Cauchy, :Flat, :FlatPos, :Uniform,
+    :Normal, :MvNormal, :Exponential, :Cauchy, :Flat, :FlatPos,
+    # `Uniform` was here and was WRONG. It is bounded, so sampling it needs a
+    # logistic bijector whose log-Jacobian varies with theta -- but the codegen
+    # grouped it with Flat/FlatPos as "constant on its support, contributes
+    # nothing to the gradient". True of the density, false of the Jacobian.
+    #
+    # Measured on the PosteriorDB GLM_Poisson pattern (two Uniform priors): the
+    # closed form returned a gradient 10x and 5x wrong and a log-density off by
+    # 6.7, with no error -- the silent-wrong-posterior failure this file's own
+    # header warns about. Rejecting the model instead means it falls back to
+    # general AD, which is correct.
+    #
+    # Re-adding it requires emitting the logistic transform AND its
+    # log-Jacobian derivative in `_gm_prior_logpdf`/the gradient path, plus a
+    # test against AD on a bounded-prior model.
 ])
 const GRADMODE_PRIOR_WRAPPERS = Set([:filldist, :Truncated, :truncated])
 
