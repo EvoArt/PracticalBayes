@@ -76,34 +76,64 @@ Ratios are median gradient time `PracticalBayes / Turing` (`< 1` means Practical
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 0.975 | 1.095 | 1.111 | 0.99 |
-| `normal` | `Float32` | 0.88 | 0.945 | 0.958 | 0.977 |
-| `poisson` | `Float64` | 0.576 | 1.002 | 0.829 | 0.975 |
-| `poisson` | `Float32` | 0.586 | 1.029 | 0.573 | 0.933 |
-| `bernoulli_logit` | `Float64` | 1.145 | 1.04 | 1.001 | 0.968 |
-| `bernoulli_logit` | `Float32` | 0.847 | 0.997 | 1.003 | 0.984 |
+| `normal` | `Float64` | 40.111 | 0.073 | 0.535 | 0.011 |
+| `normal` | `Float32` | 39.35 | 0.159 | 0.854 | 0.009 |
+| `poisson` | `Float64` | 2.641 | 3.926 | 0.261 | 3.204 |
+| `poisson` | `Float32` | 5.976 | 2.586 | 0.235 | 3.881 |
+| `bernoulli_logit` | `Float64` | 18.076 | 0.065 | 0.578 | 0.015 |
+| `bernoulli_logit` | `Float32` | 9.944 | 0.079 | 0.548 | 0.013 |
 
 ### Mooncake
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 1.019 | 0.895 | 0.929 | 0.99 |
-| `normal` | `Float32` | 0.991 | 1.302 | 1.007 | 1.045 |
-| `poisson` | `Float64` | 0.884 | 1.136 | 0.741 | 0.932 |
-| `poisson` | `Float32` | 0.94 | 1.319 | 0.764 | 0.888 |
-| `bernoulli_logit` | `Float64` | 0.905 | 0.853 | 0.966 | 1.005 |
-| `bernoulli_logit` | `Float32` | 0.969 | 0.834 | 1.218 | 1.009 |
+| `normal` | `Float64` | 9.984 | 1.075 | 0.132 | 0.318 |
+| `normal` | `Float32` | 4.797 | 1.128 | 0.154 | 0.183 |
+| `poisson` | `Float64` | 1.841 | 55.336 | 0.127 | 54.004 |
+| `poisson` | `Float32` | 3.48 | 49.193 | 0.126 | 64.537 |
+| `bernoulli_logit` | `Float64` | 2.238 | 0.895 | 0.139 | 0.251 |
+| `bernoulli_logit` | `Float32` | 1.867 | 0.572 | 0.237 | 0.212 |
 
 ### Enzyme
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 0.875 | 1.066 | 1.01 | 0.956 |
-| `normal` | `Float32` | 0.535 | 0.577 | 0.621 | 0.944 |
+| `normal` | `Float64` | 17.392 | 1.754 | 0.277 | 0.229 |
+| `normal` | `Float32` | 9.122 | 2.646 | 0.232 | 0.195 |
 | `poisson` | `Float64` | n/a | n/a | n/a | n/a |
 | `poisson` | `Float32` | n/a | n/a | n/a | n/a |
 | `bernoulli_logit` | `Float64` | n/a | n/a | n/a | n/a |
 | `bernoulli_logit` | `Float32` | n/a | n/a | n/a | n/a |
+
+
+### Piste (PracticalBayes' own AD)
+
+[Piste](https://github.com/EvoArt/Piste.jl) is the only backend here that survives `juliac --trim`, i.e. the only one that lets a model compile to a standalone binary. Turing cannot use it, so there is no PB/Turing ratio to give; these ratios are instead `Piste / fastest of ForwardDiff, Mooncake, Enzyme` on the same cell, with `< 1` meaning Piste is faster.
+
+Read the two tables together. **Forward mode** wins at small problems (roughly 20x faster at N=50, P=2, where the other backends' per-call setup dominates) and loses badly at large P, because its cost is O(P) by construction -- the 100x+ figures in the bottom-right are that, not a defect. **Reverse mode** is the one to use on parameter-heavy models; it costs one sweep regardless of P.
+
+#### Forward mode
+
+| Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
+|---|---:|---:|---:|---:|---:|
+| `normal` | `Float64` | 0.047 | 17.99 | 3.21 | 192.932 |
+| `normal` | `Float32` | 0.037 | 15.082 | 2.026 | 101.51 |
+| `poisson` | `Float64` | 0.098 | 0.264 | 2.125 | 0.583 |
+| `poisson` | `Float32` | 0.086 | 0.188 | 2.013 | 0.215 |
+| `bernoulli_logit` | `Float64` | 0.088 | 22.927 | 1.584 | 123.901 |
+| `bernoulli_logit` | `Float32` | 0.081 | 11.693 | 1.662 | 68.591 |
+
+
+#### Reverse mode
+
+| Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
+|---|---:|---:|---:|---:|---:|
+| `normal` | `Float64` | 0.136 | 0.985 | 11.861 | 5.074 |
+| `normal` | `Float32` | 0.136 | 2.382 | 13.803 | 27.952 |
+| `poisson` | `Float64` | 0.223 | 0.018 | 5.082 | 0.019 |
+| `poisson` | `Float32` | 0.199 | 0.028 | 7.322 | 0.041 |
+| `bernoulli_logit` | `Float64` | 0.26 | 1.237 | 3.82 | 4.582 |
+| `bernoulli_logit` | `Float32` | 0.229 | 1.634 | 4.377 | 10.727 |
 
 <!-- BENCH:END -->
 

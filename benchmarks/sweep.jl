@@ -1,7 +1,25 @@
 import Pkg
 Pkg.activate(@__DIR__)
-Pkg.develop(Pkg.PackageSpec(path=normpath(joinpath(@__DIR__, ".."))))
-Pkg.instantiate()
+# `Pkg.develop` and `Pkg.instantiate` used to run on EVERY invocation. Two
+# separate problems, each of which cost whole sweep runs:
+#
+#   * `develop` rewrote the manifest's PracticalBayes path each time (normpath
+#     produces a backslash form, an earlier entry a forward-slash one), so every
+#     run churned the manifest for no reason;
+#   * `instantiate` at startup reproducibly CRASHED Julia 1.12.7 here, inside
+#     libjulia-codegen/LLVM: a bare `RaiseException`, empty stdout, and death
+#     before a single line of this script ran. `julia --project=benchmarks -e
+#     'println("ok")'` in the same environment is fine, so it is specific to
+#     re-resolving at startup, not to the environment being broken.
+#
+# Neither is needed once the environment exists, so both are skipped when
+# PracticalBayes is already a dependency. On a fresh checkout (or in CI) set
+# PB_SWEEP_INSTANTIATE=1 to force the full setup.
+if get(ENV, "PB_SWEEP_INSTANTIATE", "0") == "1" ||
+   !haskey(Pkg.project().dependencies, "PracticalBayes")
+    Pkg.develop(Pkg.PackageSpec(path=normpath(joinpath(@__DIR__, ".."))))
+    Pkg.instantiate()
+end
 
 import PracticalBayes
 import Turing
@@ -17,8 +35,15 @@ import CairoMakie
 import Enzyme
 import Mooncake
 import JSON3
+import Piste
 
 const ENZYME_MODE = Enzyme.set_runtime_activity(Enzyme.Reverse)
+
+# Piste is PracticalBayes' own AD, and the only backend here that survives
+# `juliac --trim`. Turing cannot use it, so its cells are PB-only: the Turing
+# side is recorded as Inf and the README presents these against PB's own
+# fastest Turing-comparable backend rather than as a PB/Turing ratio.
+const PISTE_BACKENDS = (:piste_fwd, :piste_rev)
 const LIKELIHOODS = (:normal, :poisson, :bernoulli_logit)
 const PRECISIONS = (Float64, Float32)
 const NS = (50, 200, 1_000, 5_000, 20_000)
@@ -261,6 +286,40 @@ function main()
             end
             cell[bname] = (pb_ns, tu_ns)
         end
+
+        # --- Piste, PB-only ---------------------------------------------------
+        # Both modes differentiate the SAME PB log-density the other backends
+        # get, so the numbers are comparable; only the Turing half is absent.
+        for bname in PISTE_BACKENDS
+            pb_ns = Inf
+            try
+                pb_model = pb_regression(X, y, lik)
+                pb_layout, pb_θ0, pb_store0 = PracticalBayes.build_layout(pb_model; T=T)
+                # `closed_form=false`: this measures the AD backends themselves.
+                # The closed-form path is reported separately -- mixing it in
+                # here would compare a GLM special case against general AD.
+                pb_ldf = PracticalBayes.LogDensityFunction(pb_model, pb_layout, pb_store0;
+                                                           θ0=pb_θ0, closed_form=false)
+                obj = th -> LogDensityProblems.logdensity(pb_ldf, th)
+                K = length(pb_θ0)
+                g = zeros(eltype(pb_θ0), K)
+                if bname === :piste_fwd
+                    chunk = Piste.pickchunk(K)
+                    ws = Piste.GradientWorkspace(pb_θ0, chunk)
+                    Piste.gradient!(g, obj, pb_θ0, chunk, ws)
+                    trial = BenchmarkTools.@benchmark Piste.gradient!($g, $obj, $pb_θ0, $chunk, $ws) samples=BENCH_SAMPLES evals=BENCH_EVALS
+                else
+                    ws = Piste.ReverseWorkspace(K)
+                    Piste.rev_gradient!(g, obj, pb_θ0, ws)
+                    trial = BenchmarkTools.@benchmark Piste.rev_gradient!($g, $obj, $pb_θ0, $ws) samples=BENCH_SAMPLES evals=BENCH_EVALS
+                end
+                pb_ns = Float64(BenchmarkTools.median(trial).time)
+                println("  $(bname): PB=$(round(pb_ns/1e6; digits=3)) ms (PB-only; Turing cannot use it)")
+            catch e
+                println("  $(bname): FAILED — ", sprint(showerror, e)[1:min(end, 220)])
+            end
+            cell[bname] = (pb_ns, Inf)
+        end
     end
 
     figdir = joinpath(@__DIR__, "figures")
@@ -278,10 +337,19 @@ function main()
     fig3 = heatmap_figure(fig3_mats, Ns, Ks, likelihoods, precisions; title="Figure 3 — Enzyme gradient median time ratio (PB/Turing)")
     fig4 = heatmap_figure(fig4_mats, Ns, Ks, likelihoods, precisions; title="Figure 4 — Fastest backend per PPL ratio (PB/Turing)")
 
-    CairoMakie.save(joinpath(figdir, "fig1_forwarddiff.png"), fig1)
-    CairoMakie.save(joinpath(figdir, "fig2_mooncake.png"), fig2)
-    CairoMakie.save(joinpath(figdir, "fig3_enzyme.png"), fig3)
-    CairoMakie.save(joinpath(figdir, "fig4_fastest_per_ppl.png"), fig4)
+    # Figure writing must not be able to lose the timings. The sweep takes the
+    # best part of an hour, and the JSON is written AFTER this block -- so when
+    # `CairoMakie.save` threw (a FileIO version mismatch: it passes `dpi` where
+    # the installed FileIO wants `ppi`), an entire run's numbers went with it.
+    # The figures are a nice-to-have; the data is the point.
+    for (name, fig) in (("fig1_forwarddiff.png", fig1), ("fig2_mooncake.png", fig2),
+                        ("fig3_enzyme.png", fig3), ("fig4_fastest_per_ppl.png", fig4))
+        try
+            CairoMakie.save(joinpath(figdir, name), fig)
+        catch e
+            @warn "could not write $name; continuing so the JSON is still saved" exception=e
+        end
+    end
 
     # JSON has no Inf/NaN representation, but failed-backend cells (e.g.
     # Mooncake on some Float32+bernoulli_logit combos, see devlog) legitimately
@@ -303,6 +371,11 @@ function main()
             "forwarddiff" => Dict("pb_ns" => json_safe(cell[:forwarddiff][1]), "turing_ns" => json_safe(cell[:forwarddiff][2])),
             "mooncake" => Dict("pb_ns" => json_safe(cell[:mooncake][1]), "turing_ns" => json_safe(cell[:mooncake][2])),
             "enzyme" => Dict("pb_ns" => json_safe(cell[:enzyme][1]), "turing_ns" => json_safe(cell[:enzyme][2])),
+            # PB-only backends: no Turing counterpart exists, so only `pb_ns`
+            # is meaningful. The README compares these against PB's own
+            # fastest Turing-comparable backend instead of forming a ratio.
+            "piste_fwd" => Dict("pb_ns" => json_safe(cell[:piste_fwd][1]), "turing_ns" => nothing),
+            "piste_rev" => Dict("pb_ns" => json_safe(cell[:piste_rev][1]), "turing_ns" => nothing),
             "fastest_per_ppl_ratio" => json_safe(fastest_ratio_matrix(results, lik, T, (n,), (k,))[1, 1]),
         ))
     end

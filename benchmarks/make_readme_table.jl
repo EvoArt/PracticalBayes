@@ -1,6 +1,14 @@
 import Pkg
 Pkg.activate(@__DIR__)
-Pkg.instantiate()
+# Conditional for the same reason as sweep.jl: `Pkg.instantiate()` at startup
+# reproducibly crashes Julia 1.12.7 here, inside libjulia-codegen/LLVM -- a bare
+# `RaiseException` with nothing useful on stdout, before a line of this script
+# runs. It is only needed when the environment does not exist yet, so skip it
+# when it does. Set PB_SWEEP_INSTANTIATE=1 to force it on a fresh checkout.
+if get(ENV, "PB_SWEEP_INSTANTIATE", "0") == "1" ||
+   !haskey(Pkg.project().dependencies, "JSON3")
+    Pkg.instantiate()
+end
 
 import JSON3
 
@@ -35,6 +43,42 @@ function backend_ratios(row, backend::String)
     pb_ns = cell["pb_ns"] === nothing ? NaN : Float64(cell["pb_ns"])
     tu_ns = cell["turing_ns"] === nothing ? NaN : Float64(cell["turing_ns"])
     return ratio(pb_ns, tu_ns)
+end
+
+# Piste has no Turing counterpart (Turing cannot use it), so a PB/Turing ratio
+# is meaningless. What IS meaningful is how it compares to the fastest backend
+# PracticalBayes could otherwise use on the same model -- which is also the
+# question a user picking a backend actually has.
+function make_piste_table(lookup, backend::String, nvals::Vector{Int}, kvals::Vector{Int},
+                          likelihoods::Vector{String}, precisions::Vector{String})
+    io = IOBuffer()
+    println(io, "| Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |")
+    println(io, "|---|---:|---:|---:|---:|---:|")
+    corners = [(first(nvals), first(kvals)), (first(nvals), last(kvals)),
+               (last(nvals), first(kvals)), (last(nvals), last(kvals))]
+    for lik in likelihoods, prec in precisions
+        cells = String[]
+        for (n, k) in corners
+            row = get(lookup, (prec, lik, n, k), nothing)
+            if row === nothing
+                push!(cells, "n/a"); continue
+            end
+            pb = row[backend]["pb_ns"]
+            pb = pb === nothing ? NaN : Float64(pb)
+            # the best of PB's Turing-comparable backends on this same cell
+            best = Inf
+            for b in ("forwarddiff", "mooncake", "enzyme")
+                v = row[b]["pb_ns"]
+                v === nothing && continue
+                vv = Float64(v)
+                isfinite(vv) && vv < best && (best = vv)
+            end
+            push!(cells, (isfinite(pb) && isfinite(best) && best > 0) ?
+                          string(round(pb / best; digits=3)) : "n/a")
+        end
+        println(io, "| `", lik, "` | `", prec, "` | ", join(cells, " | "), " |")
+    end
+    return String(take!(io))
 end
 
 function make_backend_table(lookup, backend::String, nvals::Vector{Int}, kvals::Vector{Int}, likelihoods::Vector{String}, precisions::Vector{String})
@@ -100,6 +144,33 @@ function main()
         make_backend_table(lookup, "forwarddiff", nvals, kvals, likelihoods, precisions),
         make_backend_table(lookup, "mooncake", nvals, kvals, likelihoods, precisions),
         make_backend_table(lookup, "enzyme", nvals, kvals, likelihoods, precisions),
+        "
+### Piste (PracticalBayes' own AD)
+
+" *
+        "[Piste](https://github.com/EvoArt/Piste.jl) is the only backend here that survives " *
+        "`juliac --trim`, i.e. the only one that lets a model compile to a standalone " *
+        "binary. Turing cannot use it, so there is no PB/Turing ratio to give; these ratios " *
+        "are instead `Piste / fastest of ForwardDiff, Mooncake, Enzyme` on the same cell, " *
+        "with `< 1` meaning Piste is faster.
+
+" *
+        "Read the two tables together. **Forward mode** wins at small problems (roughly 20x " *
+        "faster at N=50, P=2, where the other backends' per-call setup dominates) and loses " *
+        "badly at large P, because its cost is O(P) by construction -- the 100x+ figures in " *
+        "the bottom-right are that, not a defect. **Reverse mode** is the one to use on " *
+        "parameter-heavy models; it costs one sweep regardless of P.
+
+" *
+        "#### Forward mode
+
+" *
+        make_piste_table(lookup, "piste_fwd", nvals, kvals, likelihoods, precisions),
+        "
+#### Reverse mode
+
+" *
+        make_piste_table(lookup, "piste_rev", nvals, kvals, likelihoods, precisions),
     ], "\n")
 
     update_readme_table(block)
