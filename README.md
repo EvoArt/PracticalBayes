@@ -76,30 +76,30 @@ Ratios are median gradient time `PracticalBayes / Turing` (`< 1` means Practical
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 40.111 | 0.073 | 0.535 | 0.011 |
-| `normal` | `Float32` | 39.35 | 0.159 | 0.854 | 0.009 |
-| `poisson` | `Float64` | 2.641 | 3.926 | 0.261 | 3.204 |
-| `poisson` | `Float32` | 5.976 | 2.586 | 0.235 | 3.881 |
-| `bernoulli_logit` | `Float64` | 18.076 | 0.065 | 0.578 | 0.015 |
-| `bernoulli_logit` | `Float32` | 9.944 | 0.079 | 0.548 | 0.013 |
+| `normal` | `Float64` | 1.0 | 1.079 | 1.206 | 0.986 |
+| `normal` | `Float32` | 0.9 | 1.009 | 1.052 | 0.992 |
+| `poisson` | `Float64` | 0.46 | 1.146 | 0.574 | 1.094 |
+| `poisson` | `Float32` | 0.483 | 0.914 | 0.504 | 0.893 |
+| `bernoulli_logit` | `Float64` | 1.0 | 1.09 | 1.013 | 0.981 |
+| `bernoulli_logit` | `Float32` | 0.971 | 1.011 | 0.959 | 1.005 |
 
 ### Mooncake
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 9.984 | 1.075 | 0.132 | 0.318 |
-| `normal` | `Float32` | 4.797 | 1.128 | 0.154 | 0.183 |
-| `poisson` | `Float64` | 1.841 | 55.336 | 0.127 | 54.004 |
-| `poisson` | `Float32` | 3.48 | 49.193 | 0.126 | 64.537 |
-| `bernoulli_logit` | `Float64` | 2.238 | 0.895 | 0.139 | 0.251 |
-| `bernoulli_logit` | `Float32` | 1.867 | 0.572 | 0.237 | 0.212 |
+| `normal` | `Float64` | 1.042 | 1.143 | 1.009 | 0.765 |
+| `normal` | `Float32` | 1.196 | 1.107 | 1.608 | 1.164 |
+| `poisson` | `Float64` | 1.512 | 1.418 | 0.677 | 1.014 |
+| `poisson` | `Float32` | 0.687 | 0.942 | 0.737 | 0.874 |
+| `bernoulli_logit` | `Float64` | 0.976 | 1.052 | 0.889 | 1.012 |
+| `bernoulli_logit` | `Float32` | 0.959 | 0.596 | 0.998 | 1.107 |
 
 ### Enzyme
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 17.392 | 1.754 | 0.277 | 0.229 |
-| `normal` | `Float32` | 9.122 | 2.646 | 0.232 | 0.195 |
+| `normal` | `Float64` | 0.949 | 1.126 | 0.95 | 1.107 |
+| `normal` | `Float32` | 0.658 | 0.89 | 0.909 | 1.008 |
 | `poisson` | `Float64` | n/a | n/a | n/a | n/a |
 | `poisson` | `Float32` | n/a | n/a | n/a | n/a |
 | `bernoulli_logit` | `Float64` | n/a | n/a | n/a | n/a |
@@ -110,30 +110,46 @@ Ratios are median gradient time `PracticalBayes / Turing` (`< 1` means Practical
 
 [Piste](https://github.com/EvoArt/Piste.jl) is the only backend here that survives `juliac --trim`, i.e. the only one that lets a model compile to a standalone binary. Turing cannot use it, so there is no PB/Turing ratio to give; these ratios are instead `Piste / fastest of ForwardDiff, Mooncake, Enzyme` on the same cell, with `< 1` meaning Piste is faster.
 
-Read the two tables together. **Forward mode** wins at small problems (roughly 20x faster at N=50, P=2, where the other backends' per-call setup dominates) and loses badly at large P, because its cost is O(P) by construction -- the 100x+ figures in the bottom-right are that, not a defect. **Reverse mode** is the one to use on parameter-heavy models; it costs one sweep regardless of P.
+Read the tables together. **Forward mode** wins at small problems (the other backends' per-call setup dominates a tiny gradient) and loses badly at large P, because its cost is O(P) by construction -- the large bottom-right figures are that, not a defect. **Reverse mode** is the one to use on parameter-heavy models; it costs one sweep regardless of P.
+
+**GradMode** is not AD at all: for a GLM-shaped model PracticalBayes recognises the shape and evaluates the analytic gradient directly (`X' * resid`, one BLAS call, no tape), which is why it beats every backend here. All three sweep models are GLM-shaped, so it applies to every cell; a model outside the recognised grammar falls back to ordinary AD and gets none of this.
 
 #### Forward mode
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 0.047 | 17.99 | 3.21 | 192.932 |
-| `normal` | `Float32` | 0.037 | 15.082 | 2.026 | 101.51 |
-| `poisson` | `Float64` | 0.098 | 0.264 | 2.125 | 0.583 |
-| `poisson` | `Float32` | 0.086 | 0.188 | 2.013 | 0.215 |
-| `bernoulli_logit` | `Float64` | 0.088 | 22.927 | 1.584 | 123.901 |
-| `bernoulli_logit` | `Float32` | 0.081 | 11.693 | 1.662 | 68.591 |
+| `normal` | `Float64` | 1.667 | 24.368 | 1.024 | 39.034 |
+| `normal` | `Float32` | 1.667 | 33.113 | 1.415 | 19.13 |
+| `poisson` | `Float64` | 1.828 | 12.19 | 0.997 | 30.242 |
+| `poisson` | `Float32` | 1.034 | 9.757 | 1.03 | 19.317 |
+| `bernoulli_logit` | `Float64` | 1.394 | 16.121 | 0.996 | 32.784 |
+| `bernoulli_logit` | `Float32` | 0.794 | 23.365 | 0.906 | 12.446 |
 
 
 #### Reverse mode
 
 | Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
 |---|---:|---:|---:|---:|---:|
-| `normal` | `Float64` | 0.136 | 0.985 | 11.861 | 5.074 |
-| `normal` | `Float32` | 0.136 | 2.382 | 13.803 | 27.952 |
-| `poisson` | `Float64` | 0.223 | 0.018 | 5.082 | 0.019 |
-| `poisson` | `Float32` | 0.199 | 0.028 | 7.322 | 0.041 |
-| `bernoulli_logit` | `Float64` | 0.26 | 1.237 | 3.82 | 4.582 |
-| `bernoulli_logit` | `Float32` | 0.229 | 1.634 | 4.377 | 10.727 |
+| `normal` | `Float64` | 5.333 | 1.393 | 4.565 | 1.183 |
+| `normal` | `Float32` | 5.667 | 3.558 | 9.625 | 2.822 |
+| `poisson` | `Float64` | 2.5 | 0.661 | 2.101 | 1.041 |
+| `poisson` | `Float32` | 2.69 | 1.428 | 2.59 | 2.261 |
+| `bernoulli_logit` | `Float64` | 2.379 | 1.075 | 2.18 | 1.439 |
+| `bernoulli_logit` | `Float32` | 2.529 | 3.345 | 3.005 | 2.354 |
+
+
+#### GradMode (analytic, GLM-shaped models only)
+
+Note: these figures predate a 3.8x speedup to GradMode's fixed per-call cost (`_gm_positive_support` was calling `minimum`/`maximum` on an `MvNormal` prior on every gradient, ~10us and allocating). Regenerate the sweep to pick it up; the small-N columns here are the ones most understated.
+
+| Likelihood | Precision | small N / small P | small N / large P | large N / small P | large N / large P |
+|---|---:|---:|---:|---:|---:|
+| `normal` | `Float64` | 36.056 | 1.186 | 0.28 | 0.284 |
+| `normal` | `Float32` | 41.389 | 2.093 | 0.72 | 0.204 |
+| `poisson` | `Float64` | 10.862 | 39.628 | 0.442 | 53.892 |
+| `poisson` | `Float32` | 10.328 | 59.007 | 0.471 | 75.243 |
+| `bernoulli_logit` | `Float64` | 11.121 | 1.249 | 0.537 | 0.281 |
+| `bernoulli_logit` | `Float32` | 9.559 | 1.808 | 0.597 | 0.186 |
 
 <!-- BENCH:END -->
 

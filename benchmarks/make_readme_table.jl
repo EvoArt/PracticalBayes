@@ -155,11 +155,18 @@ function main()
         "with `< 1` meaning Piste is faster.
 
 " *
-        "Read the two tables together. **Forward mode** wins at small problems (roughly 20x " *
-        "faster at N=50, P=2, where the other backends' per-call setup dominates) and loses " *
-        "badly at large P, because its cost is O(P) by construction -- the 100x+ figures in " *
-        "the bottom-right are that, not a defect. **Reverse mode** is the one to use on " *
-        "parameter-heavy models; it costs one sweep regardless of P.
+        "Read the tables together. **Forward mode** wins at small problems (the other " *
+        "backends' per-call setup dominates a tiny gradient) and loses badly at large P, " *
+        "because its cost is O(P) by construction -- the large bottom-right figures are " *
+        "that, not a defect. **Reverse mode** is the one to use on parameter-heavy models; " *
+        "it costs one sweep regardless of P.
+
+" *
+        "**GradMode** is not AD at all: for a GLM-shaped model PracticalBayes recognises " *
+        "the shape and evaluates the analytic gradient directly (`X' * resid`, one BLAS " *
+        "call, no tape), which is why it beats every backend here. All three sweep models " *
+        "are GLM-shaped, so it applies to every cell; a model outside the recognised " *
+        "grammar falls back to ordinary AD and gets none of this.
 
 " *
         "#### Forward mode
@@ -171,6 +178,17 @@ function main()
 
 " *
         make_piste_table(lookup, "piste_rev", nvals, kvals, likelihoods, precisions),
+        "
+#### GradMode (analytic, GLM-shaped models only)
+
+" *
+        "Note: these figures predate a 3.8x speedup to GradMode's fixed per-call cost " *
+        "(`_gm_positive_support` was calling `minimum`/`maximum` on an `MvNormal` prior on " *
+        "every gradient, ~10us and allocating). Regenerate the sweep to pick it up; the " *
+        "small-N columns here are the ones most understated.
+
+" *
+        make_piste_table(lookup, "gradmode", nvals, kvals, likelihoods, precisions),
     ], "\n")
 
     update_readme_table(block)

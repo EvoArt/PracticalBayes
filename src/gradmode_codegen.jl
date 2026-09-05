@@ -65,6 +65,26 @@ when it cannot be honoured, otherwise you would think you had it and not.
 Correctness is not assumed: verify with `check_gradmode` before relying on it
 for real inference.
 """
+# FUTURE WORK: GradMode as a per-site RULE rather than a whole-model swap.
+#
+# Today this is all-or-nothing at model level: `LogDensityFunction` checks
+# `gradmode_plan` and, if the model is recognised, swaps the requested AD
+# backend for `GradMode()` entirely. Unrecognised models get no benefit at all,
+# even if they contain a GLM-shaped part.
+#
+# The alternative, not built: make the closed form a RULE that reverse-mode AD
+# consults per site, so a recognised block inside a larger model gets the
+# analytic gradient while everything around it is taped normally. That is what
+# Stan does with `precomputed_gradients`, and it would compose where this does
+# not.
+#
+# Worth testing once the benchmark work is finished: does it still pay when the
+# full model is more complex than the recognised part? The whole-model swap is
+# ~9x faster than the fastest general AD on a pure GLM, but that says nothing
+# about a model where the GLM is one block among several -- the tape's
+# bookkeeping for everything else might swamp the saving. Measure before
+# building.
+
 struct GradMode end
 
 """
@@ -470,8 +490,28 @@ function _gm_is_positive(ps::PriorSite, layout)
     d = _gm_exemplar(ps, layout)
     return _gm_positive_support(d)
 end
+# NOTE ON COST. This is called once per prior site on EVERY gradient
+# evaluation, and `minimum`/`maximum` on a distribution is not free: for an
+# `MvNormal` they build a full extrema vector, measured at 9.6-10.2 us and 144-
+# 1728 bytes per call against ~0 for a scalar distribution. That was essentially
+# the whole of GradMode's fixed ~18 us floor -- a 50x2 model, whose analytic
+# gradient is trivial arithmetic, cost about the same as a 50x200 one.
+#
+# The `Union{}` guard is the fix: a multivariate distribution has vector
+# support, so "positive support with an unbounded upper end" (the scalar
+# log-transform case this predicate is asking about) does not apply, and the
+# expensive path can be skipped outright. Scalar distributions keep the original
+# behaviour, which is already free.
+#
+# Kept as a computed predicate rather than a cached field because it reads the
+# Layout's exemplar, so a Truncated or otherwise derived distribution is
+# classified by its ACTUAL support instead of its name -- that is deliberate and
+# worth preserving (see `_gm_is_positive`).
+_gm_positive_support(d::Distributions.MultivariateDistribution) = false
+_gm_positive_support(d::Distributions.MatrixDistribution) = false
 _gm_positive_support(d) = try
-    minimum(d) >= 0 && isfinite(minimum(d)) && !isfinite(maximum(d))
+    lo = minimum(d)
+    lo >= 0 && isfinite(lo) && !isfinite(maximum(d))
 catch
     false
 end

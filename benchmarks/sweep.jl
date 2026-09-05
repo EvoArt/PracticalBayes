@@ -44,6 +44,13 @@ const ENZYME_MODE = Enzyme.set_runtime_activity(Enzyme.Reverse)
 # side is recorded as Inf and the README presents these against PB's own
 # fastest Turing-comparable backend rather than as a PB/Turing ratio.
 const PISTE_BACKENDS = (:piste_fwd, :piste_rev)
+
+# GradMode is PB-only like Piste, but it is not AD at all: for a recognised GLM
+# it evaluates the analytic gradient (`X' * resid`, one BLAS call, no tape). It
+# is reported separately so its advantage is visible instead of being hidden
+# inside the AD backends' numbers, which is what happened when
+# `LogDensityFunction` silently substituted it.
+const PB_ONLY_BACKENDS = (:piste_fwd, :piste_rev, :gradmode)
 const LIKELIHOODS = (:normal, :poisson, :bernoulli_logit)
 const PRECISIONS = (Float64, Float32)
 const NS = (50, 200, 1_000, 5_000, 20_000)
@@ -149,7 +156,14 @@ end
 function build_ldf_pair(X, y, likelihood::Symbol, adtype, T::Type{<:Real}; seed::Int=1)
     pb_model = pb_regression(X, y, likelihood)
     pb_layout, pb_θ0, pb_store0 = PracticalBayes.build_layout(pb_model; T=T)
-    pb_ldf = PracticalBayes.LogDensityFunction(pb_model, pb_layout, pb_store0, adtype; θ0=pb_θ0)
+    # `closed_form=false` is essential, not incidental. All three sweep models
+    # are GLM-shaped, so `gradmode_plan` recognises them and
+    # `LogDensityFunction` would otherwise silently REPLACE the requested
+    # backend with GradMode's analytic gradient -- making every "ForwardDiff vs
+    # Turing" number actually "analytic vs Turing", and identical across the
+    # three backends. GradMode is timed separately below, as its own row.
+    pb_ldf = PracticalBayes.LogDensityFunction(pb_model, pb_layout, pb_store0, adtype;
+                                               θ0=pb_θ0, closed_form=false)
 
     turing_model = turing_regression(X, y, likelihood)
     turing_ldf = DynamicPPL.LogDensityFunction(turing_model; adtype=adtype)
@@ -290,7 +304,7 @@ function main()
         # --- Piste, PB-only ---------------------------------------------------
         # Both modes differentiate the SAME PB log-density the other backends
         # get, so the numbers are comparable; only the Turing half is absent.
-        for bname in PISTE_BACKENDS
+        for bname in PB_ONLY_BACKENDS
             pb_ns = Inf
             try
                 pb_model = pb_regression(X, y, lik)
@@ -303,7 +317,12 @@ function main()
                 obj = th -> LogDensityProblems.logdensity(pb_ldf, th)
                 K = length(pb_θ0)
                 g = zeros(eltype(pb_θ0), K)
-                if bname === :piste_fwd
+                if bname === :gradmode
+                    gm_ldf = PracticalBayes.LogDensityFunction(pb_model, pb_layout, pb_store0,
+                                 PracticalBayes.GradMode(); θ0=pb_θ0)
+                    LogDensityProblems.logdensity_and_gradient(gm_ldf, pb_θ0)
+                    trial = BenchmarkTools.@benchmark LogDensityProblems.logdensity_and_gradient($gm_ldf, $pb_θ0) samples=BENCH_SAMPLES evals=BENCH_EVALS
+                elseif bname === :piste_fwd
                     chunk = Piste.pickchunk(K)
                     ws = Piste.GradientWorkspace(pb_θ0, chunk)
                     Piste.gradient!(g, obj, pb_θ0, chunk, ws)
@@ -376,6 +395,7 @@ function main()
             # fastest Turing-comparable backend instead of forming a ratio.
             "piste_fwd" => Dict("pb_ns" => json_safe(cell[:piste_fwd][1]), "turing_ns" => nothing),
             "piste_rev" => Dict("pb_ns" => json_safe(cell[:piste_rev][1]), "turing_ns" => nothing),
+            "gradmode" => Dict("pb_ns" => json_safe(cell[:gradmode][1]), "turing_ns" => nothing),
             "fastest_per_ppl_ratio" => json_safe(fastest_ratio_matrix(results, lik, T, (n,), (k,))[1, 1]),
         ))
     end
