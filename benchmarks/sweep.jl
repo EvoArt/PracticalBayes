@@ -32,12 +32,27 @@ import LogDensityProblems
 import StatsFuns
 import LinearAlgebra
 import CairoMakie
-import Enzyme
-import Mooncake
 import JSON3
-import Piste
 
-const ENZYME_MODE = Enzyme.set_runtime_activity(Enzyme.Reverse)
+include(joinpath(@__DIR__, "backend_guard.jl"))
+
+# The AD backends load through `try_import` rather than a bare `import`.
+#
+# A top-level `import Enzyme` is a single point of failure for the whole
+# sweep: when the package fails to precompile — not hypothetical for Enzyme,
+# whose build is sensitive to the LLVM/Julia combination, and which has taken
+# out whole runs here before — the script dies at LOAD time, before a single
+# benchmark has run, and every other backend's numbers are lost with it. An
+# hour of queue time is then spent discovering that one optional dependency is
+# broken.
+#
+# Imported this way, a broken backend costs exactly its own columns: its cells
+# are recorded as `skipped` and every other backend is measured normally.
+const HAS_ENZYME = try_import(:Enzyme)
+const HAS_MOONCAKE = try_import(:Mooncake)
+const HAS_PISTE = try_import(:Piste)
+
+const ENZYME_MODE = HAS_ENZYME ? Main.Enzyme.set_runtime_activity(Main.Enzyme.Reverse) : nothing
 
 # Piste is PracticalBayes' own AD, and the only backend here that survives
 # `juliac --trim`. Turing cannot use it, so its cells are PB-only: the Turing
@@ -140,11 +155,13 @@ function make_regression_data(::Type{T}; n::Int, nparams::Int, likelihood::Symbo
 end
 
 function backend_specs()
-    return Dict(
-        :forwarddiff => ADTypes.AutoForwardDiff(),
-        :mooncake => ADTypes.AutoMooncake(; config=nothing),
-        :enzyme => ADTypes.AutoEnzyme(; mode=ENZYME_MODE),
-    )
+    # Only backends whose package actually loaded. A missing one is absent
+    # here and reported as `skipped` in the results, rather than producing an
+    # `UndefVarError` the moment its ADType is constructed.
+    d = Dict{Symbol,Any}(:forwarddiff => ADTypes.AutoForwardDiff())
+    HAS_MOONCAKE && (d[:mooncake] = ADTypes.AutoMooncake(; config=nothing))
+    HAS_ENZYME && (d[:enzyme] = ADTypes.AutoEnzyme(; mode=ENZYME_MODE))
+    return d
 end
 
 function median_gradient_time_ns(ldf, θ; samples::Int=BENCH_SAMPLES, evals::Int=BENCH_EVALS)
@@ -301,10 +318,16 @@ function main()
             cell[bname] = (pb_ns, tu_ns)
         end
 
-        # --- Piste, PB-only ---------------------------------------------------
-        # Both modes differentiate the SAME PB log-density the other backends
-        # get, so the numbers are comparable; only the Turing half is absent.
-        for bname in PB_ONLY_BACKENDS
+        # --- Piste and GradMode, PB-only -------------------------------------
+        # Both Piste modes differentiate the SAME PB log-density the other
+        # backends get, so the numbers are comparable; only the Turing half is
+        # absent. GradMode is PB-only for a different reason — it is not AD at
+        # all, but the analytic gradient for a recognised GLM.
+        #
+        # The Piste entries drop out when Piste itself failed to load; GradMode
+        # is part of PracticalBayes proper and so is always attempted.
+        pb_only = HAS_PISTE ? PB_ONLY_BACKENDS : (:gradmode,)
+        for bname in pb_only
             pb_ns = Inf
             try
                 pb_model = pb_regression(X, y, lik)
@@ -323,14 +346,14 @@ function main()
                     LogDensityProblems.logdensity_and_gradient(gm_ldf, pb_θ0)
                     trial = BenchmarkTools.@benchmark LogDensityProblems.logdensity_and_gradient($gm_ldf, $pb_θ0) samples=BENCH_SAMPLES evals=BENCH_EVALS
                 elseif bname === :piste_fwd
-                    chunk = Piste.pickchunk(K)
-                    ws = Piste.GradientWorkspace(pb_θ0, chunk)
-                    Piste.gradient!(g, obj, pb_θ0, chunk, ws)
-                    trial = BenchmarkTools.@benchmark Piste.gradient!($g, $obj, $pb_θ0, $chunk, $ws) samples=BENCH_SAMPLES evals=BENCH_EVALS
+                    chunk = Main.Piste.pickchunk(K)
+                    ws = Main.Piste.GradientWorkspace(pb_θ0, chunk)
+                    Main.Piste.gradient!(g, obj, pb_θ0, chunk, ws)
+                    trial = BenchmarkTools.@benchmark Main.Piste.gradient!($g, $obj, $pb_θ0, $chunk, $ws) samples=BENCH_SAMPLES evals=BENCH_EVALS
                 else
-                    ws = Piste.ReverseWorkspace(K)
-                    Piste.rev_gradient!(g, obj, pb_θ0, ws)
-                    trial = BenchmarkTools.@benchmark Piste.rev_gradient!($g, $obj, $pb_θ0, $ws) samples=BENCH_SAMPLES evals=BENCH_EVALS
+                    ws = Main.Piste.ReverseWorkspace(K)
+                    Main.Piste.rev_gradient!(g, obj, pb_θ0, ws)
+                    trial = BenchmarkTools.@benchmark Main.Piste.rev_gradient!($g, $obj, $pb_θ0, $ws) samples=BENCH_SAMPLES evals=BENCH_EVALS
                 end
                 pb_ns = Float64(BenchmarkTools.median(trial).time)
                 println("  $(bname): PB=$(round(pb_ns/1e6; digits=3)) ms (PB-only; Turing cannot use it)")
@@ -379,6 +402,13 @@ function main()
     json_safe(x::AbstractFloat) = isfinite(x) ? x : nothing
     json_safe(x) = x
 
+    # A backend whose package never loaded has no entry in `cell` at all.
+    # Indexing it directly would throw a `KeyError` HERE — at the very last
+    # step, after the whole sweep has run — and take every measured number
+    # with it. `get` turns an absent backend into a `null` pair instead, which
+    # is exactly how a failed backend is already represented.
+    cellget(cell, b) = get(cell, b, (Inf, Inf))
+
     rows = Any[]
     for T in precisions, lik in likelihoods, n in Ns, k in Ks
         cell = results[(T, lik, n, k)]
@@ -387,15 +417,15 @@ function main()
             "likelihood" => String(lik),
             "N" => n,
             "NPARAMS" => k,
-            "forwarddiff" => Dict("pb_ns" => json_safe(cell[:forwarddiff][1]), "turing_ns" => json_safe(cell[:forwarddiff][2])),
-            "mooncake" => Dict("pb_ns" => json_safe(cell[:mooncake][1]), "turing_ns" => json_safe(cell[:mooncake][2])),
-            "enzyme" => Dict("pb_ns" => json_safe(cell[:enzyme][1]), "turing_ns" => json_safe(cell[:enzyme][2])),
+            "forwarddiff" => Dict("pb_ns" => json_safe(cellget(cell, :forwarddiff)[1]), "turing_ns" => json_safe(cellget(cell, :forwarddiff)[2])),
+            "mooncake" => Dict("pb_ns" => json_safe(cellget(cell, :mooncake)[1]), "turing_ns" => json_safe(cellget(cell, :mooncake)[2])),
+            "enzyme" => Dict("pb_ns" => json_safe(cellget(cell, :enzyme)[1]), "turing_ns" => json_safe(cellget(cell, :enzyme)[2])),
             # PB-only backends: no Turing counterpart exists, so only `pb_ns`
             # is meaningful. The README compares these against PB's own
             # fastest Turing-comparable backend instead of forming a ratio.
-            "piste_fwd" => Dict("pb_ns" => json_safe(cell[:piste_fwd][1]), "turing_ns" => nothing),
-            "piste_rev" => Dict("pb_ns" => json_safe(cell[:piste_rev][1]), "turing_ns" => nothing),
-            "gradmode" => Dict("pb_ns" => json_safe(cell[:gradmode][1]), "turing_ns" => nothing),
+            "piste_fwd" => Dict("pb_ns" => json_safe(cellget(cell, :piste_fwd)[1]), "turing_ns" => nothing),
+            "piste_rev" => Dict("pb_ns" => json_safe(cellget(cell, :piste_rev)[1]), "turing_ns" => nothing),
+            "gradmode" => Dict("pb_ns" => json_safe(cellget(cell, :gradmode)[1]), "turing_ns" => nothing),
             "fastest_per_ppl_ratio" => json_safe(fastest_ratio_matrix(results, lik, T, (n,), (k,))[1, 1]),
         ))
     end

@@ -1,10 +1,21 @@
+# Environment for the GPU benchmark (benchmarks/gpu/gpu_benchmark.jl and the
+# older gpu_sweep.jl).
+#
+# Turing is included so the PB-vs-Turing comparison can run; every optional
+# backend here is imported through `try_import` in backend_guard.jl, so any
+# one of them failing to precompile costs its own columns and not the run.
 [deps]
 ADTypes = "47edcb42-4c32-4615-8424-f2b9edc5f35b"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DynamicPPL = "366bfd00-2699-11ea-058f-f148b4cae6d8"
+Enzyme = "7da242da-08ed-463a-9acd-ee780be4f1d9"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LogDensityProblems = "6fdf6af0-433a-55f7-b3ed-c6c6e0b8df7c"
+Mooncake = "da2b9cff-9c12-43a0-ae48-6db2b0edb7d6"
+Piste = "f69a1a94-130c-4fa4-b8d2-e36d656cbe66"
 PracticalBayes = "8f6a2c3e-9b1d-4e5a-a7c3-1d2e3f4a5b6c"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
