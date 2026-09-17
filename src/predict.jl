@@ -150,16 +150,23 @@ b[:, 2]             # BoundsError -- 2 indexes the CHAIN, and there is one
 ```
 
 Getting one element's draws means indexing the draw first and the element
-second (`[b[i,c][2] for i in axes(b,1)]`), which is easy to get wrong and is
-the most common trap when porting code that expects MCMCChains' layout. So:
+second (`[b[i,c][2] for i in 1:size(b,1)]`), which is easy to get wrong and is
+the most common trap when porting code that expects MCMCChains' layout.
+
+A second trap sits behind it: writing that comprehension over `axes(b, 1)` —
+the more idiomatic-looking spelling — returns a `DimArray`, because a chain's
+axes are dimensional. Slices of it carry their lookup values and then refuse to
+broadcast against each other (`Lookup values for Dim{:iter} ... do not match`),
+so the failure surfaces wherever the draws are eventually used rather than
+where they were built. So:
 
 ```julia
 param_draws(chn, :beta, 2)     # every draw of beta[2], all chains
 param_draws(chn, :sigma)       # a scalar parameter needs no index
 ```
 
-Returns a plain `Matrix` rather than a `DimArray` so the result drops straight
-into `mean`/`std`/`quantile` and plotting code.
+Returns a plain `Matrix` rather than a `DimArray`, so the result drops straight
+into `mean`/`std`/`quantile`, broadcasts, and plotting code.
 """
 function param_draws(chn::FlexiChains.SymChain, name::Symbol)
     b = chn[name]

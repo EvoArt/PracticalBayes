@@ -109,14 +109,33 @@ So the natural Turing-style column index reaches for a *chain* that isn't there:
 b[:, 2]     # BoundsError: 200×1 Matrix{Vector{Float64}} at index [1:200, 2]
 ```
 
-To get the draws for one element, index the draw first and the element second:
+To get the draws for one element, index the draw first and the element second.
+Use a plain range, **not** `axes`:
 
 ```julia
-draws = [b[i, 1][2] for i in axes(b, 1)]     # all draws of beta[2], chain 1
+draws = [b[i, 1][2] for i in 1:size(b, 1)]     # all draws of beta[2], chain 1
 ```
 
-Or use [`param_draws`](@ref), which does this and handles multiple chains:
+`axes(b, 1)` looks like the more idiomatic spelling and is a trap: a
+`SymChain`'s axes are *dimensional*, so a comprehension over them hands back a
+`DimArray` rather than a `Vector`. That looks fine until you slice it, because
+slices carry their lookup values and then refuse to broadcast against each
+other:
+
+```julia
+d = [b[i, 1][2] for i in axes(b, 1)]     # a DimArray, not a Vector
+d[1:50] .- d[51:100]
+# ERROR: DimensionMismatch: Lookup values for Dim{:iter} of [1, 2, ...]
+#        and [51, 52, ...] do not match
+```
+
+The failure surfaces wherever you eventually use the draws, which can be a long
+way from the line that caused it.
+
+Simplest to sidestep both traps with [`param_draws`](@ref), which returns a
+plain `Matrix{Float64}` and handles multiple chains:
 
 ```julia
 param_draws(chn, :beta, 2)          # all draws of beta[2], every chain
+param_draws(chn, :sigma)            # a scalar parameter needs no index
 ```

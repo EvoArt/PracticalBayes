@@ -194,8 +194,16 @@ end
 
     for j in eachindex(truth)
         d = PracticalBayes.param_draws(chn, :beta, j)
-        @test d isa Matrix{Float64}            # plain Matrix, not a DimArray
+        # `===`, not `isa`: a DimMatrix would satisfy `isa AbstractMatrix` and
+        # even indexes like a Matrix, so only an exact type check proves the
+        # DimensionalData wrapper is gone. It has to be, because slices of a
+        # DimArray carry their lookup values and then refuse to broadcast
+        # against each other ("Lookup values for Dim{:iter} ... do not match")
+        # -- which is a failure at the USE site, far from the cause. Reported
+        # from downstream, where it cost two cluster jobs.
+        @test typeof(d) === Matrix{Float64}
         @test size(d) == size(b)
+        @test (d[1:2, 1] .- d[3:4, 1]) isa Vector{Float64}   # slices broadcast
         # same numbers as the by-hand incantation the docs give
         @test d[:, 1] == [b[i, 1][j] for i in 1:size(b, 1)]
         @test isapprox(sum(d) / length(d), truth[j]; atol=0.15)
