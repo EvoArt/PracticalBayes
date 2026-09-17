@@ -230,8 +230,31 @@ function _gm_read_param(ps::PriorSite, layout, theta)
     slot isa FlatSlot || error("gradmode: expected FlatSlot for $(ps.name)")
     d = _gm_exemplar(ps, layout)
     x, ljac = with_logabsdet_jacobian(from_linked_vec(d), _linked_view(theta, slot.range))
-    return x, ljac
+    # The exemplar is recorded ONCE by TraceMode and carries the element type of
+    # the distribution as written (`Exponential(1)` is Float64), so Bijectors
+    # returns a Float64 `x` even when `theta` is Float32 — and everything
+    # downstream then promotes, running the whole closed form in Float64.
+    #
+    # The general-AD path does not have this problem because it re-evaluates the
+    # model body at the current theta, so its distributions take theta's type.
+    # Here the exemplar is deliberately reused (see `_gm_exemplar`), so the
+    # width has to be restored explicitly. Note this is a WIDTH conversion only:
+    # the bijector has already run, so no derivative information is discarded.
+    #
+    # Caught by test/ad_backends.jl's `@test vref isa Float32`, which started
+    # failing when the closed form became automatic for recognised models.
+    T = float(eltype(theta))
+    return _gm_toT(T, x), _gm_toT(T, ljac)
 end
+
+# Convert a site value (scalar, or a vector/view of them) to width `T`, leaving
+# anything that is not a plain float alone — a `Dual` under a ForwardDiff-family
+# backend must pass through untouched, which is why this dispatches on
+# `AbstractFloat` rather than converting unconditionally.
+@inline _gm_toT(::Type{T}, x::AbstractFloat) where {T} = convert(T, x)
+@inline _gm_toT(::Type{T}, x::AbstractArray{<:AbstractFloat}) where {T} =
+    eltype(x) === T ? x : convert(AbstractArray{T}, x)
+@inline _gm_toT(::Type{T}, x) where {T} = x
 
 # The distribution instance for a site, taken from the Layout's own recorded
 # exemplar (built during TraceMode) rather than re-evaluated from the AST —
@@ -245,7 +268,28 @@ end
 
 # --- prior value/gradient ---------------------------------------------------
 
-_gm_prior_logpdf(ps::PriorSite, v) = _gm_flatlike(ps.dist) ? 0.0 : logpdf_of(ps, v)
+# The working element type for one site's arithmetic.
+#
+# Everything the AST walk produces (`_gm_num`, `_gm_mvnormal_var_of`) is
+# Float64 by construction — see `_gm_num`'s own comment for why that
+# annotation is load-bearing. But this package is Float32-first, so a Float64
+# CONSTANT multiplied into a Float32 parameter promotes the whole expression,
+# and the closed form then silently runs the entire log-density in Float64.
+# That is not just a slower path: `logdensity_and_gradient` returned a Float64
+# value alongside a Float32 gradient, which is what caught this.
+#
+# So: keep the AST boundary at Float64, and convert to the parameter's own
+# width here, at the point of use. `_gm_T` reads that width off the value being
+# scored; `_gm_c` is the conversion.
+@inline _gm_T(v) = float(eltype(v))
+@inline _gm_c(::Type{T}, x) where {T} = convert(T, x)
+
+# 2pi at the working width. Written this way rather than as `log(2pi)` because
+# the literal is Float64 and would promote the sum it lands in.
+@inline _gm_log2pi(::Type{T}) where {T} = log(_gm_c(T, 2) * _gm_c(T, pi))
+
+_gm_prior_logpdf(ps::PriorSite, v) =
+    _gm_flatlike(ps.dist) ? zero(_gm_T(v)) : logpdf_of(ps, v)
 
 # Flat/FlatPos are constant on their support AND need no bounded transform, so
 # they contribute nothing that varies with theta.
@@ -261,21 +305,23 @@ function logpdf_of(ps::PriorSite, v)
     # hierarchical (centered): location and/or scale come from `vals`, not the
     # AST, so this is handled by `_gm_hier_logpdf` with the resolved numbers.
     _gm_is_hier(ps) && error("gradmode: hierarchical prior needs _gm_hier_logpdf")
+    T = _gm_T(v)
+    half = _gm_c(T, 0.5)
     if d === :Normal
-        mu, sd = _gm_num(ps.args, 1, 0.0), _gm_num(ps.args, 2, 1.0)
-        return sum(@. -0.5*((v-mu)/sd)^2 - log(sd) - 0.5*log(2pi))
+        mu, sd = _gm_c(T, _gm_num(ps.args, 1, 0.0)), _gm_c(T, _gm_num(ps.args, 2, 1.0))
+        return sum(@. -half*((v-mu)/sd)^2 - log(sd) - half*_gm_log2pi(T))
     elseif d === :MvNormal
         # isotropic covariance `c*I`; `c` recovered from the AST at
         # recognition time (see _gm_mvnormal_var). Ignoring it silently
         # differentiates a scaled prior as if it were standard normal.
-        c = _gm_mvnormal_var_of(ps)
-        return sum(@. -0.5*v^2/c) - 0.5*length(v)*(log(2pi) + log(c))
+        c = _gm_c(T, _gm_mvnormal_var_of(ps))
+        return sum(@. -half*v^2/c) - half*_gm_c(T, length(v))*(_gm_log2pi(T) + log(c))
     elseif d === :Exponential
-        th = _gm_num(ps.args, 1, 1.0)
+        th = _gm_c(T, _gm_num(ps.args, 1, 1.0))
         return sum(@. -v/th - log(th))
     elseif d === :Cauchy
-        mu, sc = _gm_num(ps.args, 1, 0.0), _gm_num(ps.args, 2, 1.0)
-        return sum(@. -log(pi*sc*(1 + ((v-mu)/sc)^2)))
+        mu, sc = _gm_c(T, _gm_num(ps.args, 1, 0.0)), _gm_c(T, _gm_num(ps.args, 2, 1.0))
+        return sum(@. -log(_gm_c(T, pi)*sc*(1 + ((v-mu)/sc)^2)))
     end
     error("gradmode: no closed-form logpdf for $(d)")
 end
@@ -300,17 +346,18 @@ function _gm_prior_grad!(g, ps::PriorSite, v, layout, theta)
     end
     slot = getproperty(layout.slots, ps.name)
     d = ps.dist
+    T = _gm_T(v)
     dv = if d === :Normal
-        mu, sd = _gm_num(ps.args, 1, 0.0), _gm_num(ps.args, 2, 1.0)
+        mu, sd = _gm_c(T, _gm_num(ps.args, 1, 0.0)), _gm_c(T, _gm_num(ps.args, 2, 1.0))
         @. -(v-mu)/sd^2
     elseif d === :MvNormal
-        c = _gm_mvnormal_var_of(ps)
+        c = _gm_c(T, _gm_mvnormal_var_of(ps))
         @. -v/c
     elseif d === :Exponential
-        th = _gm_num(ps.args, 1, 1.0)
-        fill(-1/th, size(v))
+        th = _gm_c(T, _gm_num(ps.args, 1, 1.0))
+        fill(-inv(th), size(v))
     elseif d === :Cauchy
-        mu, sc = _gm_num(ps.args, 1, 0.0), _gm_num(ps.args, 2, 1.0)
+        mu, sc = _gm_c(T, _gm_num(ps.args, 1, 0.0)), _gm_c(T, _gm_num(ps.args, 2, 1.0))
         @. -2*(v-mu)/(sc^2 + (v-mu)^2)
     else
         error("gradmode: no closed-form prior gradient for $(d)")
@@ -347,12 +394,18 @@ _gm_is_hier(ps::PriorSite) = ps.hyper_loc !== nothing || ps.hyper_scale !== noth
 # this `::Float64` (the obvious fix for the inference problem) would have been
 # WRONG precisely because of this case, and checking whether the annotation
 # was safe is what surfaced the bug.
-function _gm_hier_params(ps::PriorSite, vals)
+#
+# `T` is the working element type (see `_gm_T`). It applies ONLY to the
+# constants recovered from the AST — a hyper value read out of `vals` already
+# carries the parameter's own type and is passed through untouched, vector case
+# included.
+function _gm_hier_params(ps::PriorSite, vals, T)
     mu = ps.hyper_loc === nothing ?
-        (ps.dist === :MvNormal ? 0.0 : _gm_num(ps.args, 1, 0.0)) :
+        _gm_c(T, ps.dist === :MvNormal ? 0.0 : _gm_num(ps.args, 1, 0.0)) :
         _gm_hyper_value(vals[ps.hyper_loc])
     if ps.hyper_scale === nothing
-        sd = ps.dist === :MvNormal ? sqrt(_gm_mvnormal_var_of(ps)) : _gm_num(ps.args, 2, 1.0)
+        sd = _gm_c(T, ps.dist === :MvNormal ?
+                      sqrt(_gm_mvnormal_var_of(ps)) : _gm_num(ps.args, 2, 1.0))
     else
         s = _gm_scalar(vals[ps.hyper_scale])
         # What the argument MEANS differs by distribution, and getting it
@@ -369,13 +422,15 @@ function _gm_hier_params(ps::PriorSite, vals)
 end
 
 function _gm_hier_logpdf(ps::PriorSite, v, vals)
-    mu, sd = _gm_hier_params(ps, vals)
-    n = length(v)
+    T = _gm_T(v)
+    mu, sd = _gm_hier_params(ps, vals, T)
+    n = _gm_c(T, length(v))
+    half = _gm_c(T, 0.5)
     #  is scalar or elementwise;  handles both without
     # allocating a broadcast temporary.
-    ss = 0.0
+    ss = zero(T)
     @inbounds for k in eachindex(v); ss += (v[k] - _gm_mu_at(mu, k))^2; end
-    return -0.5*ss/sd^2 - n*(log(sd) + 0.5*log(2pi))
+    return -half*ss/sd^2 - n*(log(sd) + half*_gm_log2pi(T))
 end
 
 # One element of a hyper-location that may be a scalar or a vector.
@@ -390,7 +445,8 @@ end
 end
 
 function _gm_hier_grad!(g, ps::PriorSite, v, vals, layout)
-    mu, sd = _gm_hier_params(ps, vals)
+    T = _gm_T(v)
+    mu, sd = _gm_hier_params(ps, vals, T)
     s2 = sd*sd
     # elementwise in both cases: broadcasting a scalar mu is a no-op, and a
     # vector mu lines up with v element for element
@@ -408,7 +464,7 @@ function _gm_hier_grad!(g, ps::PriorSite, v, vals, layout)
         if mu isa AbstractArray
             _gm_add_hyper_vec!(g, ps.hyper_loc, v, mu, s2, vals, layout)
         else
-            acc = 0.0
+            acc = zero(T)
             @inbounds for x in v; acc += (x - mu); end
             _gm_add_hyper!(g, ps.hyper_loc, acc/s2, vals, layout)
         end
@@ -417,9 +473,9 @@ function _gm_hier_grad!(g, ps::PriorSite, v, vals, layout)
     # always scalar (the recognizer only accepts scalar scale forms), so this
     # sum is correct in both cases.
     if ps.hyper_scale !== nothing
-        ss = 0.0
+        ss = zero(T)
         @inbounds for k in eachindex(v); ss += (v[k] - _gm_mu_at(mu, k))^2; end
-        dsd = (ss/s2 - length(v))/sd
+        dsd = (ss/s2 - _gm_c(T, length(v)))/sd
         _gm_add_hyper!(g, ps.hyper_scale, dsd, vals, layout)
     end
     return nothing
@@ -599,10 +655,11 @@ function _gm_link_loglik_and_dEta!(w, link::Symbol, eta, y, sigma)
         # needs no SpecialFunctions dependency: see its own comment).
         @inbounds @simd for i in eachindex(eta)
             m = exp(eta[i])
-            ll += y[i]*eta[i] - m
-            w[i] = y[i] - m
+            yi = _gm_c(T, y[i])
+            ll += yi*eta[i] - m
+            w[i] = yi - m
         end
-        ll -= _gm_logfactorial_sum(y)
+        ll -= _gm_c(T, _gm_logfactorial_sum(y))
     elseif link === :BernoulliCLogLog
         # complementary log-log: p = 1 - exp(-exp(eta)).
         # With m = exp(eta):  log p = log1p(-exp(-m)),  log(1-p) = -m.
@@ -623,13 +680,18 @@ function _gm_link_loglik_and_dEta!(w, link::Symbol, eta, y, sigma)
             end
         end
     elseif link === :Normal || link === :MvNormal
-        s2 = sigma*sigma
+        # `sigma` may arrive as Float64 (from `_gm_obs_scale`'s AST-derived
+        # default) even when eta is Float32; converting here keeps the loop at
+        # one width instead of promoting every iteration.
+        sd = _gm_c(T, sigma)
+        s2 = sd*sd
+        half = _gm_c(T, 0.5)
         @inbounds @simd for i in eachindex(eta)
-            r = y[i] - eta[i]
-            ll += -0.5*r*r/s2
+            r = _gm_c(T, y[i]) - eta[i]
+            ll += -half*r*r/s2
             w[i] = r/s2
         end
-        ll += -length(eta)*(log(sigma) + 0.5*log(2pi))
+        ll += -_gm_c(T, length(eta))*(log(sd) + half*_gm_log2pi(T))
     else
         error("gradmode: no closed-form link derivative for $(link)")
     end
@@ -669,12 +731,13 @@ end
 # d/d(log sigma) = sigma * d/d(sigma)).
 function _gm_scale_grad!(g, plan::GLMPlan, vals, eta, y, layout, theta)
     (plan.link in (:Normal, :MvNormal) && plan.scale !== nothing) || return nothing
-    s = _gm_scalar(vals[plan.scale])
-    ss = zero(eltype(eta))
+    T = _gm_T(eta)
+    s = _gm_c(T, _gm_scalar(vals[plan.scale]))
+    ss = zero(T)
     @inbounds @simd for i in eachindex(eta)
-        r = y[i] - eta[i]; ss += r*r
+        r = _gm_c(T, y[i]) - eta[i]; ss += r*r
     end
-    dsigma = ss/(s^3) - length(eta)/s
+    dsigma = ss/(s^3) - _gm_c(T, length(eta))/s
     slot = getproperty(layout.slots, plan.scale)
     g[first(slot.range)] += dsigma * s     # chain through exp
     return nothing
