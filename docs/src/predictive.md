@@ -58,6 +58,7 @@ specific posterior draw rather than re-derived by hand outside the model.
 ```@docs
 PracticalBayes.predict
 PracticalBayes.chain_draws
+PracticalBayes.param_draws
 ```
 
 `predict` samples un-conditioned observe sites from the likelihood (unlike

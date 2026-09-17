@@ -134,6 +134,59 @@ function chain_draws(chn::FlexiChains.SymChain)
 end
 
 """
+    param_draws(chn::FlexiChains.SymChain, name::Symbol) -> Matrix
+    param_draws(chn::FlexiChains.SymChain, name::Symbol, i) -> Matrix
+
+Posterior draws for one parameter as a plain `(draws × chains)` matrix of
+scalars. With `i`, the draws for element `i` of a vector-valued parameter.
+
+This exists because FlexiChains keeps a vector parameter as ONE entry whose
+elements are the whole vector, rather than flattening it into `beta[1]`,
+`beta[2]`, ... columns the way MCMCChains does:
+
+```julia
+b = chn[:beta]      # (draws × chains) matrix, eltype Vector{Float64}
+b[:, 2]             # BoundsError -- 2 indexes the CHAIN, and there is one
+```
+
+Getting one element's draws means indexing the draw first and the element
+second (`[b[i,c][2] for i in axes(b,1)]`), which is easy to get wrong and is
+the most common trap when porting code that expects MCMCChains' layout. So:
+
+```julia
+param_draws(chn, :beta, 2)     # every draw of beta[2], all chains
+param_draws(chn, :sigma)       # a scalar parameter needs no index
+```
+
+Returns a plain `Matrix` rather than a `DimArray` so the result drops straight
+into `mean`/`std`/`quantile` and plotting code.
+"""
+function param_draws(chn::FlexiChains.SymChain, name::Symbol)
+    b = chn[name]
+    eltype(b) <: AbstractArray && throw(ArgumentError(
+        "`$(name)` is vector-valued (eltype $(eltype(b))); pass an element " *
+        "index, e.g. `param_draws(chn, :$(name), 1)`"))
+    # Plain `1:size(...)` ranges rather than `axes(b, ...)` on purpose: a
+    # comprehension over a DimArray's own axes comes back as a DimArray, and
+    # this is documented to return a plain Matrix.
+    return [b[i, c] for i in 1:size(b, 1), c in 1:size(b, 2)]
+end
+
+function param_draws(chn::FlexiChains.SymChain, name::Symbol, i)
+    b = chn[name]
+    eltype(b) <: AbstractArray || throw(ArgumentError(
+        "`$(name)` is scalar-valued; drop the index and call " *
+        "`param_draws(chn, :$(name))`"))
+    # Every draw has the same length (the layout is fixed), so checking the
+    # first is enough to give a clear error instead of a BoundsError deep in
+    # the comprehension.
+    n = length(first(b))
+    (i isa Integer && 1 <= i <= n) || throw(BoundsError(first(b), i))
+    # plain ranges, not `axes` -- see the scalar method above
+    return [b[j, c][i] for j in 1:size(b, 1), c in 1:size(b, 2)]
+end
+
+"""
     pointwise_loglikelihoods(model::Model, nt::NamedTuple; flatten=false)
         -> NamedTuple or Vector{Float64}
 

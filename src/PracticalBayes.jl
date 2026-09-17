@@ -53,7 +53,7 @@ export Flat, FlatPos, filldist, arraydist, LogPoisson, BinomialLogit, BernoulliC
 export build_layout, link, invlink, Layout
 export Accum, logjoint, logprior, loglikelihood_
 export LogDensityFunction
-export GradMode, check_gradmode
+export GradMode, check_gradmode, is_gradmode_compatible
 export AutoPBForwardDiff
 export AbstractEvalMode, TraceMode, EvalMode, PriorMode, FixedMode, PointwiseMode
 export evaluate, paramtype
@@ -68,6 +68,6 @@ export SymChain
 # Re-exported so `using PracticalBayes` is self-contained for running inference:
 export sample, HMC, NUTS, HMCDA, NUTSthenHMC, AdaptiveHMC, JitteredNSteps
 export default_progress
-export returned, predict, chain_draws, loglikelihood_at, pointwise_loglikelihoods
+export returned, predict, chain_draws, param_draws, loglikelihood_at, pointwise_loglikelihoods
 
 end # module PracticalBayes

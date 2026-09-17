@@ -1,11 +1,12 @@
 # Tests for src/predict.jl — the M4 milestone (design plan: "prior-predictive
 # moments; predict shapes/names; returned round-trip").
 
-using Distributions: Normal, Exponential
+using Distributions: Normal, Exponential, MvNormal
 using AdvancedHMC: NUTS
 using StableRNGs: StableRNG
 import AbstractMCMC
 using Statistics: mean, std
+using LinearAlgebra: I
 import FlexiChains
 
 @testset "predict.jl: rand(model) draws a full prior sample" begin
@@ -166,4 +167,66 @@ end
     # without a real observation to score it against.
     m3 = reg(x, fill(missing, 15))
     @test_throws ArgumentError PracticalBayes.pointwise_loglikelihoods(m3, nt)
+end
+
+@testset "param_draws — vector parameters keep their shape in a FlexiChain" begin
+    # FlexiChains stores a vector parameter as ONE entry whose elements are the
+    # whole vector, where MCMCChains would flatten it into beta[1], beta[2], ...
+    # That layout is the most common porting trap (see docs/src/
+    # differences_from_turing.md), so the accessor is tested against a model
+    # whose true coefficients are known and well separated.
+    rng = StableRNG(11)
+    X = randn(rng, 60, 3)
+    truth = [1.0, -2.0, 0.5]
+    y = X * truth .+ 0.1 .* randn(StableRNG(12), 60)
+
+    @model function reg3(X, y)
+        beta ~ filldist(Normal(0.0, 2.0), size(X, 2))
+        y ~ MvNormal(X * beta, 1.0^2 * I)
+    end
+    chn = AbstractMCMC.sample(
+        StableRNG(13), reg3(X, y), NUTS(0.8), 400;
+        n_adapts=200, discard_initial=200, progress=false,
+    )
+
+    b = chn[:beta]
+    @test eltype(b) <: AbstractVector          # the layout this exists to handle
+
+    for j in eachindex(truth)
+        d = PracticalBayes.param_draws(chn, :beta, j)
+        @test d isa Matrix{Float64}            # plain Matrix, not a DimArray
+        @test size(d) == size(b)
+        # same numbers as the by-hand incantation the docs give
+        @test d[:, 1] == [b[i, 1][j] for i in 1:size(b, 1)]
+        @test isapprox(sum(d) / length(d), truth[j]; atol=0.15)
+    end
+
+    # Wrong arity in either direction must say which call to make instead,
+    # rather than throwing a BoundsError from inside the comprehension.
+    @test_throws ArgumentError PracticalBayes.param_draws(chn, :beta)
+    @test_throws BoundsError PracticalBayes.param_draws(chn, :beta, 4)
+end
+
+@testset "is_gradmode_compatible — public recognition predicate" begin
+    @model function glm_shaped(X, y)
+        beta ~ MvNormal(zeros(size(X, 2)), I)
+        y ~ MvNormal(X * beta, 1.0^2 * I)
+    end
+    # A product of two PARAMETERS is bilinear, not linear, so the recogniser
+    # rejects it -- the documented boundary of "linear predictor".
+    @model function bilinear(X, B, y)
+        beta ~ MvNormal(zeros(size(X, 2)), I)
+        z ~ MvNormal(zeros(size(B, 2)), I)
+        sigma ~ Exponential(1.0)
+        y ~ MvNormal(X * beta .+ sigma .* (B * z), 1.0^2 * I)
+    end
+    X = randn(StableRNG(14), 20, 2)
+    B = randn(StableRNG(15), 20, 2)
+    y = randn(StableRNG(16), 20)
+
+    @test PracticalBayes.is_gradmode_compatible(glm_shaped(X, y))
+    @test !PracticalBayes.is_gradmode_compatible(bilinear(X, B, y))
+    # agrees with the internal probe it wraps
+    @test PracticalBayes.is_gradmode_compatible(glm_shaped(X, y)) ==
+          (PracticalBayes.gradmode_plan(glm_shaped(X, y).f) !== nothing)
 end

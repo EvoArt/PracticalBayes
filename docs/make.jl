@@ -30,6 +30,8 @@ makedocs(
         "Latent-trajectory tutorial" => "tutorials/latent_trajectory.md",
         "Predictive utilities" => "predictive.md",
         "Float32 and GPU" => "float32_gpu.md",
+        "GPU clusters" => "gpu_cluster.md",
+        "Differences from Turing" => "differences_from_turing.md",
     ],
     checkdocs=:none,
     warnonly=true,

@@ -39,8 +39,11 @@
 # `check_depends.jl`'s role for `depends=` annotations. Recognition plus
 # codegen is an optimization; the check is what licenses using it.
 #
-# STATUS: not yet wired into `@model`/`LogDensityFunction`. Callable and
-# tested directly.
+# STATUS: wired in. `LogDensityFunction` checks `gradmode_plan` and uses the
+# closed form automatically for a recognised model (3fec222), so passing
+# `GradMode()` explicitly is only needed to make the requirement strict --
+# an explicit request throws when the model is not recognised, where the
+# automatic path just leaves the requested backend in place.
 # =============================================================================
 
 """
@@ -61,6 +64,39 @@ Use it for large-N, moderate-to-large-P models; use ForwardDiff for small ones.
 If the model is not recognized, construction throws with the reason rather
 than silently falling back — an opt-in request for a fast path should tell you
 when it cannot be honoured, otherwise you would think you had it and not.
+Use `is_gradmode_compatible(model)` to ask without throwing.
+
+## What "linear predictor" means here
+
+Recognition is SYNTACTIC: linearity in the parameters must be visible in the
+expression, not merely true of it. The accepted shapes are sums of
+
+  - `X * beta`     — data matrix times a parameter vector
+  - `x .* beta`    — data vector times a SCALAR parameter
+  - `a[idx]`       — a parameter gathered by a data index (group effects)
+  - a bare parameter (intercept) or a bare data name (offset)
+
+So this is recognized:
+
+```julia
+y ~ arraydist(LogPoisson.(X*beta .+ offset))            # accepted
+```
+
+and this is not:
+
+```julia
+y ~ arraydist(LogPoisson.(X*beta .+ sigma .* (B*z)))    # rejected
+```
+
+The second is a log-Gaussian Cox process with a latent field, and the reason
+it is rejected is `sigma .* (B*z)`: both `sigma` and `z` are PARAMETERS, so
+that term is bilinear, not linear. The whole design here is one parameter per
+term — `_gm_pullback_term!` pushes `dL/dEta` back to a single destination —
+and a product of two parameters would need two, each scaled by the other's
+current value. Supporting it is a change to the term contract, not an extra
+case, so it is deliberately out of scope.
+
+Rejection is loud and falls back to general AD, which is correct but slower.
 
 Correctness is not assumed: verify with `check_gradmode` before relying on it
 for real inference.
@@ -96,6 +132,29 @@ of this for every model it compiles; this fallback covers evaluators built by
 other means.
 """
 gradmode_plan(::Any) = nothing
+
+"""
+    is_gradmode_compatible(model::Model) -> Bool
+
+Whether `model` is recognized as a GLM that `GradMode()` can differentiate in
+closed form. Cheap: recognition happens at `@model` expansion time, so this is
+a lookup, not an analysis.
+
+The closed form is selected automatically for a recognized model, so you do not
+need this to benefit from it. It is for deciding something yourself — picking a
+backend per model in a script that builds several, or asserting in a test that
+a model you expect to be recognized still is after an edit:
+
+```julia
+adtype = is_gradmode_compatible(m) ? GradMode() : AutoMooncake()
+```
+
+Recognition is syntactic and deliberately conservative: a model that is
+mathematically a GLM can still be rejected if it is not *visibly* one (see
+`GradMode`'s docstring for what the grammar accepts). A `false` means "not
+recognized", never "not a GLM".
+"""
+is_gradmode_compatible(model::Model) = gradmode_plan(model.f) !== nothing
 
 """
     GradModeWorkspace(N, dim)
